@@ -1,0 +1,102 @@
+from unittest import TestCase
+
+from hummingbot.connector.exchange.tegro.tegro_order_book import TegroOrderBook
+from hummingbot.core.data_type.order_book_message import OrderBookMessageType
+
+
+class TegroOrderBookTests(TestCase):
+
+    def test_snapshot_message_from_exchange(self):
+        snapshot_message = TegroOrderBook.snapshot_message_from_exchange(
+            msg={
+                "time": 1661932660144,
+                "Asks": [
+                    {
+                        "price": 6097.00,
+                        "quantity": "1600"
+                    },
+                ],
+                "Bids": [
+                    {
+                        "price": 712,
+                        "quantity": 5000
+                    },
+
+                ]
+            },
+            timestamp=1640000000.0,
+            metadata={"trading_pair": "KRYPTONITE-USDT"}
+        )
+
+        self.assertEqual(OrderBookMessageType.SNAPSHOT, snapshot_message.type)
+        self.assertEqual(1640000000, snapshot_message.timestamp)
+        self.assertEqual(1661932660144, snapshot_message.update_id)
+        self.assertEqual(-1, snapshot_message.trade_id)
+        self.assertEqual(1, len(snapshot_message.bids))
+        self.assertEqual(712.0, snapshot_message.bids[0].price)
+        self.assertEqual(5000.0, snapshot_message.bids[0].amount)
+        self.assertEqual(1661932660144, snapshot_message.bids[0].update_id)
+        self.assertEqual(1, len(snapshot_message.asks))
+        self.assertEqual(6097, snapshot_message.asks[0].price)
+        self.assertEqual(1600.0, snapshot_message.asks[0].amount)
+        self.assertEqual(1661932660144, snapshot_message.asks[0].update_id)
+
+    def test_diff_message_from_exchange(self):
+        diff_msg = TegroOrderBook.diff_message_from_exchange(
+            msg={
+                "action": "order_book_updated",
+                "time": 1661932660144,
+                "symbol": "KRYPTONITE/USDT",
+                "Bids": [
+                    {
+                        "price": 6097.00,
+                        "quantity": 1600
+                    },
+                ],
+                "Asks": [
+                    {
+                        "price": 712,
+                        "quantity": 5000
+                    },
+                ]},
+            timestamp=1640000000000,
+            metadata={"trading_pair": "KRYPTONITE-USDT"}
+        )
+
+        self.assertEqual(1661932660144, diff_msg.update_id)
+        self.assertEqual(1640000000.0, diff_msg.timestamp)
+        self.assertEqual(-1, diff_msg.trade_id)
+        self.assertEqual(1, len(diff_msg.bids))
+        self.assertEqual(6097.0, diff_msg.bids[0].price)
+        self.assertEqual(1600.0, diff_msg.bids[0].amount)
+        self.assertEqual(1661932660144, diff_msg.bids[0].update_id)
+        self.assertEqual(1, len(diff_msg.asks))
+        self.assertEqual(712.0, diff_msg.asks[0].price)
+        self.assertEqual(5000, diff_msg.asks[0].amount)
+        self.assertEqual(1661932660144, diff_msg.asks[0].update_id)
+
+    def test_trade_message_from_exchange(self):
+        trade_update = {
+            "amount": 573,
+            "id": "68a22415-3f6b-4d27-8996-1cbf71d89e5f",
+            "marketId": "",
+            "price": 0.1,
+            "state": "success",
+            "symbol": "KRYPTONITE_USDT",
+            "maker": True,
+            "time": 1661932660144,
+            "txHash": "0x2f0d41ced1c7d21fe114235dfe363722f5f7026c21441f181ea39768a151c205",
+        }
+
+        trade_message = TegroOrderBook.trade_message_from_exchange(
+            msg=trade_update,
+            metadata={"trading_pair": "KRYPTONITE-USDT"},
+            timestamp=1661927587836
+        )
+
+        self.assertEqual("KRYPTONITE_USDT", trade_message.trading_pair)
+        self.assertEqual(OrderBookMessageType.TRADE, trade_message.type)
+        self.assertEqual(1661927587.836, trade_message.timestamp)
+        self.assertEqual(-1, trade_message.update_id)
+        self.assertEqual(-1, trade_message.first_update_id)
+        self.assertEqual("68a22415-3f6b-4d27-8996-1cbf71d89e5f", trade_message.trade_id)

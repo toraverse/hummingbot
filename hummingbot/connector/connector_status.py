@@ -38,6 +38,8 @@ connector_status = {
     'phemex_perpetual': 'bronze',
     'phemex_perpetual_testnet': 'bronze',
     'polkadex': 'bronze',
+    'tegro': 'bronze',
+    'tegro_testnet': 'bronze',
     'vertex': 'bronze',
     'vertex_testnet': 'bronze',
     # gateway connectors
