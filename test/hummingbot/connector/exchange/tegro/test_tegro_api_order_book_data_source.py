@@ -28,7 +28,7 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
         cls.ev_loop = asyncio.get_event_loop()
         cls.base_asset = "KRYPTONITE"
         cls.quote_asset = "USDT"
-        cls.tegro_api_key = "",  # noqa
+        cls.tegro_api_key = "",
         cls.trading_pair = f"{cls.base_asset}-{cls.quote_asset}"
         cls.ex_trading_pair = cls.base_asset + cls.quote_asset
         cls.domain = "tegro"
@@ -48,7 +48,6 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
             trading_required=False,
             domain=self.domain)
         self.data_source = TegroAPIOrderBookDataSource(trading_pairs=[self.trading_pair],
-                                                       api_key="",
                                                        connector=self.connector,
                                                        api_factory=self.connector._web_assistants_factory,
                                                        domain=self.domain)
@@ -91,36 +90,39 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
 
     def _trade_update_event(self):
         resp = {
-            "amount": 1,
-            "id": "68a22415-3f6b-4d27-8996-1cbf71d89e5f",
-            "marketId": "",
-            "price": 0.1,
-            "state": "success",
-            "symbol": self.ex_trading_pair,
-            "maker": True,
-            "time": '2024-02-11T22:31:50.25114Z',
-            "txHash": "0x2f0d41ced1c7d21fe114235dfe363722f5f7026c21441f181ea39768a151c205",
-        }
+            "action": "trade_updated",
+            "data": {
+                "amount": 1,
+                "id": "68a22415-3f6b-4d27-8996-1cbf71d89e5f",
+                "marketId": "",
+                "price": 0.1,
+                "state": "success",
+                "symbol": self.ex_trading_pair,
+                "maker": True,
+                "time": '2024-02-11T22:31:50.25114Z',
+                "txHash": "0x2f0d41ced1c7d21fe114235dfe363722f5f7026c21441f181ea39768a151c205",
+            }}
         return resp
 
     def _order_diff_event(self):
         resp = {
-            "action": "order_book_updated",
-            "time": 1707381444,
-            "symbol": self.ex_trading_pair,
-            "Bids": [
-                {
-                    "price": "60.9700",
-                    "quantity": "1600"
-                },
-            ],
-            "Asks": [
-                {
-                    "price": "71.29",
-                    "quantity": "50000"
-                },
-            ]
-        }
+            "action": "order_book_diff",
+            "data": {
+                "time": 1707381444,
+                "symbol": self.ex_trading_pair,
+                "Bids": [
+                    {
+                        "price": "60.9700",
+                        "quantity": "1600"
+                    },
+                ],
+                "Asks": [
+                    {
+                        "price": "71.29",
+                        "quantity": "50000"
+                    },
+                ]
+            }}
         return resp
 
     def _snapshot_response(self):
@@ -358,7 +360,7 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
 
         msg: OrderBookMessage = self.async_run_with_timeout(msg_queue.get())
 
-        self.assertEqual(diff_event["time"], msg.update_id)
+        self.assertEqual(diff_event["data"]["time"], msg.update_id)
 
     @aioresponses()
     def test_listen_for_order_book_snapshots_cancelled_when_fetching_snapshot(self, mock_api):

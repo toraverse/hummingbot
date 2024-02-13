@@ -7,8 +7,8 @@ import ujson
 from aioresponses.core import aioresponses
 
 import hummingbot.connector.exchange.tegro.tegro_constants as CONSTANTS
-from hummingbot.connector.exchange.tegro.tegro_api_user_stream_data_source import TegroUserStreamDataSource
 from hummingbot.connector.exchange.tegro.tegro_auth import TegroAuth
+from hummingbot.connector.exchange.tegro.tegro_api_user_stream_data_source import TegroUserStreamDataSource
 from hummingbot.connector.test_support.network_mocking_assistant import NetworkMockingAssistant
 from hummingbot.core.api_throttler.async_throttler import AsyncThrottler
 
@@ -27,8 +27,8 @@ class TegroUserStreamDataSourceUnitTests(unittest.TestCase):
         cls.ex_trading_pair = f"{cls.base_asset}_{cls.quote_asset}"
         cls.domain = CONSTANTS.DOMAIN
 
-        cls.api_key = "TEST_API_KEY"  # noqa
-        cls.secret_key = "TEST_SECRET_KEY"  # noqa
+        cls.api_key = "TEST_API_KEY"
+        cls.secret_key = "TEST_SECRET_KEY"
 
     def setUp(self) -> None:
         super().setUp()
@@ -38,9 +38,7 @@ class TegroUserStreamDataSourceUnitTests(unittest.TestCase):
 
         self.emulated_time = 1640001112.223
         self.auth = TegroAuth(api_key=self.api_key,
-                              api_secret=self.secret_key,
-                              time_provider=lambda: self.emulated_time)
-
+                              api_secret=self.secret_key)
         self.throttler = AsyncThrottler(rate_limits=CONSTANTS.RATE_LIMITS)
         self.data_source = TegroUserStreamDataSource(
             auth=self.auth, domain=self.domain, throttler=self.throttler

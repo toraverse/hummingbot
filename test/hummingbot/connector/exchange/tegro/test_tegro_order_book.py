@@ -44,21 +44,23 @@ class TegroOrderBookTests(TestCase):
     def test_diff_message_from_exchange(self):
         diff_msg = TegroOrderBook.diff_message_from_exchange(
             msg={
-                "action": "order_book_updated",
-                "time": 1661932660144,
-                "symbol": "KRYPTONITE/USDT",
-                "Bids": [
-                    {
-                        "price": 6097.00,
-                        "quantity": 1600
-                    },
-                ],
-                "Asks": [
-                    {
-                        "price": 712,
-                        "quantity": 5000
-                    },
-                ]},
+                "action": "order_book_diff",
+                "data": {
+                    "time": 1661932660144,
+                    "symbol": "KRYPTONITE_USDT",
+                    "Bids": [
+                        {
+                            "price": 6097.00,
+                            "quantity": 1600
+                        },
+                    ],
+                    "Asks": [
+                        {
+                            "price": 712,
+                            "quantity": 5000
+                        },
+                    ]
+                }},
             timestamp=1640000000000,
             metadata={"trading_pair": "KRYPTONITE-USDT"}
         )
@@ -77,15 +79,18 @@ class TegroOrderBookTests(TestCase):
 
     def test_trade_message_from_exchange(self):
         trade_update = {
-            "amount": 573,
-            "id": "68a22415-3f6b-4d27-8996-1cbf71d89e5f",
-            "marketId": "",
-            "price": 0.1,
-            "state": "success",
-            "symbol": "KRYPTONITE_USDT",
-            "maker": True,
-            "time": 1661932660144,
-            "txHash": "0x2f0d41ced1c7d21fe114235dfe363722f5f7026c21441f181ea39768a151c205",
+            "action": "trade_updated",
+            "data": {
+                "amount": 573,
+                "id": "68a22415-3f6b-4d27-8996-1cbf71d89e5f",
+                "marketId": "",
+                "price": 0.1,
+                "state": "success",
+                "symbol": "KRYPTONITE_USDT",
+                "maker": True,
+                "time": 1661932660144,
+                "txHash": "0x2f0d41ced1c7d21fe114235dfe363722f5f7026c21441f181ea39768a151c205",
+            }
         }
 
         trade_message = TegroOrderBook.trade_message_from_exchange(

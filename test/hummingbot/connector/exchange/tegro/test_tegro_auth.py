@@ -1,51 +1,107 @@
 import asyncio
+import copy
 import hashlib
 import hmac
-from copy import copy
-from unittest import TestCase
-from unittest.mock import MagicMock
+import json
+import unittest
+from typing import Awaitable
+from unittest.mock import patch
+from urllib.parse import urlencode
 
-from typing_extensions import Awaitable
-
-from hummingbot.connector.exchange.tegro.tegro_auth import TegroAuth
+from hummingbot.connector.exchange.tegro.tegro_auth import EXPIRATION, TegroAuth
 from hummingbot.core.web_assistant.connections.data_types import RESTMethod, RESTRequest
 
+MOCK_TS = 1648733370.792768
 
-class TegroAuthTests(TestCase):
+
+class TegroAuthUnitTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        super().setUpClass()
+        cls.ev_loop = asyncio.get_event_loop()
+        cls.api_key = "TEST_API_KEY"
+        cls.secret_key = "TEST_SECRET_KEY"
 
     def setUp(self) -> None:
-        self._api_key = "testApiKey"
-        self._secret = "testSecret"
+        super().setUp()
+        self.test_params = {
+            "test_param": "test_input"
+        }
+        self.auth = TegroAuth(
+            api_key=self.api_key,
+            api_secret=self.secret_key
+        )
+
+    def _get_test_payload(self):
+        return urlencode(dict(copy.deepcopy(self.test_params)))
+
+    def _get_signature_from_test_payload(self, payload):
+        return hmac.new(
+            bytes(self.auth._api_secret.encode("utf-8")),
+            payload.encode("utf-8"),
+            hashlib.sha256
+        ).hexdigest()
 
     def async_run_with_timeout(self, coroutine: Awaitable, timeout: float = 1):
-        ret = asyncio.get_event_loop().run_until_complete(asyncio.wait_for(coroutine, timeout))
+        ret = self.ev_loop.run_until_complete(asyncio.wait_for(coroutine, timeout))
         return ret
 
-    def test_rest_authenticate(self):
-        now = 1234567890.000
-        mock_time_provider = MagicMock()
-        mock_time_provider.time.return_value = now
+    def test_generate_signature_from_payload(self):
+        payload = self._get_test_payload()
+        signature = self.auth.generate_signature_from_payload(payload)
 
-        params = {
-            "symbol": "LTCBTC",
-            "side": "BUY",
-            "type": "LIMIT",
-            "timeInForce": "GTC",
-            "quantity": 1,
-            "price": "0.1",
-        }
-        full_params = copy(params)
+        self.assertEqual(signature, self._get_signature_from_test_payload(payload))
 
-        auth = TegroAuth(api_key=self._api_key, api_secret=self._secret, time_provider=mock_time_provider)
-        request = RESTRequest(method=RESTMethod.GET, params=params, is_auth_required=True)
-        configured_request = self.async_run_with_timeout(auth.rest_authenticate(request))
+    @patch("time.time")
+    def test_rest_authenticate_no_parameters_provided(self, mock_ts):
+        mock_ts.return_value = MOCK_TS
+        mock_path = "/TEST_PATH_URL"
+        payload = 'GET' + mock_path + str(int(MOCK_TS) + EXPIRATION)
+        request: RESTRequest = RESTRequest(
+            method=RESTMethod.GET, url=mock_path, is_auth_required=True
+        )
+        signed_request: RESTRequest = self.async_run_with_timeout(self.auth.rest_authenticate(request))
 
-        full_params.update({"timestamp": 1234567890000})
-        encoded_params = "&".join([f"{key}={value}" for key, value in full_params.items()])
-        expected_signature = hmac.new(
-            self._secret.encode("utf-8"),
-            encoded_params.encode("utf-8"),
-            hashlib.sha256).hexdigest()
-        self.assertEqual(now * 1e3, configured_request.params["timestamp"])
-        self.assertEqual(expected_signature, configured_request.params["signature"])
-        self.assertEqual({"X-TEGRO-APIKEY": self._api_key}, configured_request.headers)
+        self.assertIn("api-key", signed_request.headers)
+        self.assertEqual(signed_request.headers["api-key"], self.api_key)
+        self.assertIn("api-signature", signed_request.headers)
+        self.assertEqual(signed_request.headers["api-signature"], self._get_signature_from_test_payload(payload))
+
+    @patch("time.time")
+    def test_rest_authenticate_parameters_provided(self, mock_ts):
+        mock_ts.return_value = MOCK_TS
+        mock_path = "/TEST_PATH_URL"
+        mock_query = "?test_param=param"
+        payload = 'GET' + mock_path + mock_query + str(int(MOCK_TS) + EXPIRATION)
+        request: RESTRequest = RESTRequest(
+            method=RESTMethod.GET, url=mock_path, params={"test_param": "param"}, is_auth_required=True
+        )
+        signed_request: RESTRequest = self.async_run_with_timeout(self.auth.rest_authenticate(request))
+
+        self.assertIn("api-key", signed_request.headers)
+        self.assertEqual(signed_request.headers["api-key"], self.api_key)
+        self.assertIn("api-signature", signed_request.headers)
+        self.assertEqual(signed_request.headers["api-signature"], self._get_signature_from_test_payload(payload))
+
+    @patch("time.time")
+    def test_rest_authenticate_data_provided(self, mock_ts):
+        mock_ts.return_value = MOCK_TS
+        mock_path = "/TEST_PATH_URL"
+        mock_data = json.dumps(self.test_params)
+        payload = 'POST' + mock_path + str(int(MOCK_TS) + EXPIRATION) + mock_data
+        request: RESTRequest = RESTRequest(
+            method=RESTMethod.POST, url="/TEST_PATH_URL", data=self.test_params, is_auth_required=True
+        )
+
+        signed_request: RESTRequest = self.async_run_with_timeout(self.auth.rest_authenticate(request))
+
+        self.assertIn("api-key", signed_request.headers)
+        self.assertEqual(signed_request.headers["api-key"], self.api_key)
+        self.assertIn("api-signature", signed_request.headers)
+        self.assertEqual(signed_request.headers["api-signature"], self._get_signature_from_test_payload(payload))
+
+    def test_generate_ws_signature(self):
+        payload = 'GET/realtime' + str(int(MOCK_TS))
+
+        signature = self.async_run_with_timeout(self.auth.generate_ws_signature(str(int(MOCK_TS))))
+        self.assertEqual(signature, self._get_signature_from_test_payload(payload))

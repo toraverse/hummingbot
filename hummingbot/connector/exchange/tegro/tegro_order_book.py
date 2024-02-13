@@ -2,7 +2,10 @@ from typing import Dict, Optional
 
 from hummingbot.core.data_type.common import TradeType
 from hummingbot.core.data_type.order_book import OrderBook
-from hummingbot.core.data_type.order_book_message import OrderBookMessage, OrderBookMessageType
+from hummingbot.core.data_type.order_book_message import (
+    OrderBookMessage,
+    OrderBookMessageType
+)
 
 
 class TegroOrderBook(OrderBook):
@@ -35,9 +38,9 @@ class TegroOrderBook(OrderBook):
             msg.update(metadata)
         return OrderBookMessage(OrderBookMessageType.DIFF, {
             "trading_pair": msg["trading_pair"],
-            "update_id": msg["time"],
-            "bids": [[float(entry['price']), entry['quantity']] for entry in msg["Bids"]],
-            "asks": [[float(entry['price']), entry['quantity']] for entry in msg["Asks"]],
+            "update_id": msg["data"]["time"],
+            "bids": [[float(entry['price']), entry['quantity']] for entry in msg["data"]["Bids"]],
+            "asks": [[float(entry['price']), entry['quantity']] for entry in msg["data"]["Asks"]],
         }, timestamp=timestamp * 1e-3)
 
     @classmethod
@@ -52,10 +55,10 @@ class TegroOrderBook(OrderBook):
             msg.update(metadata)
         ts = timestamp
         return OrderBookMessage(OrderBookMessageType.TRADE, {
-            "trading_pair": msg["symbol"],
-            "trade_type": float(TradeType.SELL.value) if msg["maker"] else float(TradeType.BUY.value),
-            "trade_id": msg["id"],
+            "trading_pair": msg["data"]["symbol"],
+            "trade_type": float(TradeType.SELL.value) if msg["data"]["maker"] else float(TradeType.BUY.value),
+            "trade_id": msg["data"]["id"],
             "update_id": ts,
-            "price": msg["price"],
-            "amount": msg["amount"]
+            "price": msg["data"]["price"],
+            "amount": msg["data"]["amount"]
         }, timestamp=ts * 1e-3)

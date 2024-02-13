@@ -63,8 +63,7 @@ class TegroExchange(ExchangePyBase):
     def authenticator(self):
         return TegroAuth(
             api_key=self.api_key,
-            api_secret=self.secret_key,
-            time_provider=self._time_synchronizer
+            api_secret=self.secret_key
         )
 
     @property
@@ -152,7 +151,6 @@ class TegroExchange(ExchangePyBase):
 
     def _create_order_book_data_source(self) -> OrderBookTrackerDataSource:
         return TegroAPIOrderBookDataSource(
-            api_key=self.api_key,
             trading_pairs=self._trading_pairs,
             connector=self,
             api_factory=self._web_assistants_factory,

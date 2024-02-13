@@ -1,9 +1,9 @@
 import unittest
 
-from hummingbot.connector.exchange.binance import binance_utils as utils
+from hummingbot.connector.exchange.tegro import tegro_utils as utils
 
 
-class BinanceUtilTestCases(unittest.TestCase):
+class TegroeUtilTestCases(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:

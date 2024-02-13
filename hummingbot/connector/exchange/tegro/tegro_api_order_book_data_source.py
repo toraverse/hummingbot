@@ -3,7 +3,6 @@ import time
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from hummingbot.connector.exchange.tegro import tegro_constants as CONSTANTS, tegro_web_utils
-from hummingbot.connector.exchange.tegro.tegro_auth import TegroAuth
 from hummingbot.connector.exchange.tegro.tegro_order_book import TegroOrderBook
 from hummingbot.core.data_type.order_book_message import OrderBookMessage
 from hummingbot.core.data_type.order_book_tracker_data_source import OrderBookTrackerDataSource
@@ -26,23 +25,16 @@ class TegroAPIOrderBookDataSource(OrderBookTrackerDataSource):
     _logger: Optional[HummingbotLogger] = None
 
     def __init__(self,
-                 api_key: str,
                  trading_pairs: List[str],
                  connector: 'TegroExchange',
                  api_factory: WebAssistantsFactory,
                  domain: Optional[str] = CONSTANTS.DOMAIN):
         super().__init__(trading_pairs)
-        self._api_key = api_key
         self._connector = connector
         self._trade_messages_queue_key = CONSTANTS.TRADE_EVENT_TYPE
         self._diff_messages_queue_key = CONSTANTS.DIFF_EVENT_TYPE
         self._domain: Optional[str] = domain
         self._api_factory = api_factory
-
-    @property
-    def authenticate(self):
-        TegroAuth(
-            api_key=self._api_key)
 
     @staticmethod
     async def trading_pair_associated_to_exchange_symbol(symbol: str) -> str:
@@ -143,14 +135,14 @@ class TegroAPIOrderBookDataSource(OrderBookTrackerDataSource):
 
     async def _parse_trade_message(self, raw_message: Dict[str, Any], message_queue: asyncio.Queue):
         if "result" not in raw_message:
-            trading_pair = await self._connector.trading_pair_associated_to_exchange_symbol(symbol=raw_message["symbol"])
+            trading_pair = await self._connector.trading_pair_associated_to_exchange_symbol(symbol=raw_message["data"]["symbol"])
             trade_message = TegroOrderBook.trade_message_from_exchange(
                 raw_message, time.time(), {"trading_pair": trading_pair})
             message_queue.put_nowait(trade_message)
 
     async def _parse_order_book_diff_message(self, raw_message: Dict[str, Any], message_queue: asyncio.Queue):
         if "result" not in raw_message:
-            trading_pair = await self._connector.trading_pair_associated_to_exchange_symbol(symbol=raw_message["symbol"])
+            trading_pair = await self._connector.trading_pair_associated_to_exchange_symbol(symbol=raw_message["data"]["symbol"])
             order_book_message: OrderBookMessage = TegroOrderBook.diff_message_from_exchange(
                 raw_message, time.time(), {"trading_pair": trading_pair})
             message_queue.put_nowait(order_book_message)
