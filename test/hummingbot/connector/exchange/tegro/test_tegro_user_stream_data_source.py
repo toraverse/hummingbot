@@ -7,8 +7,8 @@ import ujson
 from aioresponses.core import aioresponses
 
 import hummingbot.connector.exchange.tegro.tegro_constants as CONSTANTS
-from hummingbot.connector.exchange.tegro.tegro_auth import TegroAuth
 from hummingbot.connector.exchange.tegro.tegro_api_user_stream_data_source import TegroUserStreamDataSource
+from hummingbot.connector.exchange.tegro.tegro_auth import TegroAuth
 from hummingbot.connector.test_support.network_mocking_assistant import NetworkMockingAssistant
 from hummingbot.core.api_throttler.async_throttler import AsyncThrottler
 
