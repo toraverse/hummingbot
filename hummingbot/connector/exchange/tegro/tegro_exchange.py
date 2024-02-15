@@ -6,11 +6,10 @@ from bidict import bidict
 
 from hummingbot.connector.constants import s_decimal_NaN
 from hummingbot.connector.exchange.tegro import tegro_constants as CONSTANTS, tegro_utils, tegro_web_utils as web_utils
+from hummingbot.connector.exchange.tegro.data_sources.tegro_data_source import TegroDexClient
 from hummingbot.connector.exchange.tegro.tegro_api_order_book_data_source import TegroAPIOrderBookDataSource
 from hummingbot.connector.exchange.tegro.tegro_api_user_stream_data_source import TegroUserStreamDataSource
 from hummingbot.connector.exchange.tegro.tegro_auth import TegroAuth
-
-# from hummingbot.connector.exchange.tegro.data_sources.tegro_data_sorce import TegroDexClient
 from hummingbot.connector.exchange_py_base import ExchangePyBase
 from hummingbot.connector.trading_rule import TradingRule
 from hummingbot.connector.utils import TradeFillOrderDetails, combine_to_hb_trading_pair
@@ -190,7 +189,39 @@ class TegroExchange(ExchangePyBase):
                            order_type: OrderType,
                            price: Decimal,
                            **kwargs) -> Tuple[str, float]:
-        pass
+        request_body, transaction_data = await TegroDexClient.create_order(
+            amount, trade_type, order_type, price
+        )
+        s = await self._connector.exchange_symbol_associated_to_pair(trading_pair=trading_pair)
+        symbol: str = s.replace('-', '_')
+        params = {
+            "market_symbol": symbol,
+            "chain_id": CONSTANTS.CHAIN_ID,
+            "side": transaction_data["data"]["side"],
+            "volume_precision": transaction_data["data"]["volume_precision"],
+            "price_precision": transaction_data["data"]["price_precision"],
+            "raw_order_data": transaction_data["data"]["raw_order_data"],
+            "signature": request_body,
+            "signed_order_type": transaction_data["signed_order_type"],
+        }
+        try:
+            data = await self._api_request(
+                method=RESTMethod.POST,
+                path_url=CONSTANTS.ORDER_PATH_URL,
+                params=params
+            )
+            o_id = str(data["id"])
+            transact_time = data["timestamp"] * 1e-3
+        except IOError as e:
+            error_description = str(e)
+            is_server_overloaded = ("status is 503" in error_description
+                                    and "Unknown error, please check your request or try again later." in error_description)
+            if is_server_overloaded:
+                o_id = "UNKNOWN"
+                transact_time = self._time_synchronizer.time()
+            else:
+                raise
+        return o_id, transact_time
 
     async def _place_cancel(self, order_id: str, tracked_order: InFlightOrder):
         pass
