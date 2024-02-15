@@ -217,7 +217,7 @@ class TegroExchange(ExchangePyBase):
             is_server_overloaded = ("status is 503" in error_description
                                     and "Unknown error, please check your request or try again later." in error_description)
             if is_server_overloaded:
-                o_id = "UNKNOWN"
+                o_id = "Unknown"
                 transact_time = self._time_synchronizer.time()
             else:
                 raise
