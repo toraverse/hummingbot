@@ -1,12 +1,14 @@
 import asyncio
+import json
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from bidict import bidict
+from web3 import HTTPProvider, Web3
 
 from hummingbot.connector.constants import s_decimal_NaN
 from hummingbot.connector.exchange.tegro import tegro_constants as CONSTANTS, tegro_utils, tegro_web_utils as web_utils
-from hummingbot.connector.exchange.tegro.data_sources.tegro_data_source import TegroDexClient
 from hummingbot.connector.exchange.tegro.tegro_api_order_book_data_source import TegroAPIOrderBookDataSource
 from hummingbot.connector.exchange.tegro.tegro_api_user_stream_data_source import TegroUserStreamDataSource
 from hummingbot.connector.exchange.tegro.tegro_auth import TegroAuth
@@ -14,17 +16,21 @@ from hummingbot.connector.exchange_py_base import ExchangePyBase
 from hummingbot.connector.trading_rule import TradingRule
 from hummingbot.connector.utils import TradeFillOrderDetails, combine_to_hb_trading_pair
 from hummingbot.core.data_type.common import OrderType, TradeType
-from hummingbot.core.data_type.in_flight_order import InFlightOrder, OrderUpdate, TradeUpdate
+from hummingbot.core.data_type.in_flight_order import InFlightOrder, OrderState, OrderUpdate, TradeUpdate
 from hummingbot.core.data_type.order_book_tracker_data_source import OrderBookTrackerDataSource
 from hummingbot.core.data_type.trade_fee import DeductedFromReturnsTradeFee, TokenAmount, TradeFeeBase
 from hummingbot.core.data_type.user_stream_tracker_data_source import UserStreamTrackerDataSource
 from hummingbot.core.event.events import MarketEvent, OrderFilledEvent
-from hummingbot.core.utils.async_utils import safe_gather
+from hummingbot.core.utils.async_utils import safe_ensure_future, safe_gather
 from hummingbot.core.web_assistant.connections.data_types import RESTMethod
 from hummingbot.core.web_assistant.web_assistants_factory import WebAssistantsFactory
 
 if TYPE_CHECKING:
     from hummingbot.client.config.config_helpers import ClientConfigAdapter
+
+s_logger = None
+s_decimal_0 = Decimal(0)
+s_float_NaN = float("nan")
 
 
 class TegroExchange(ExchangePyBase):
@@ -43,6 +49,9 @@ class TegroExchange(ExchangePyBase):
                  ):
         self.secret_key = tegro_api_secret
         self.api_key = tegro_api_key
+        self._provider_url = CONSTANTS.TEGRO_BASE_URL
+        self._provider = Web3(HTTPProvider(self._provider_url))
+        self._api_factory = WebAssistantsFactory
         self.client_config_map = client_config_map
         self._domain = domain
         self._trading_required = trading_required
@@ -181,6 +190,166 @@ class TegroExchange(ExchangePyBase):
         is_maker = order_type is OrderType.LIMIT_MAKER
         return DeductedFromReturnsTradeFee(percent=self.estimate_fee_pct(is_maker))
 
+    def buy(self,
+            trading_pair: str,
+            amount: Decimal,
+            order_type=OrderType.LIMIT,
+            price: Decimal = s_decimal_NaN,
+            **kwargs) -> str:
+        """
+        Creates a promise to create a buy order using the parameters
+
+        :param trading_pair: the token pair to operate with
+        :param amount: the order amount
+        :param order_type: the type of order to create (MARKET, LIMIT, LIMIT_MAKER)
+        :param price: the order price
+
+        :return: the id assigned by the connector to the order (the client id)
+        """
+        order_id = tegro_utils.get_client_order_id(True)
+        safe_ensure_future(self._create_order(
+            trade_type=TradeType.BUY,
+            order_id=order_id,
+            trading_pair=trading_pair,
+            amount=amount,
+            order_type=order_type,
+            price=price))
+        return order_id
+
+    def sell(self,
+             trading_pair: str,
+             amount: Decimal,
+             order_type: OrderType = OrderType.LIMIT,
+             price: Decimal = s_decimal_NaN,
+             **kwargs) -> str:
+        """
+        Creates a promise to create a sell order using the parameters.
+        :param trading_pair: the token pair to operate with
+        :param amount: the order amount
+        :param order_type: the type of order to create (MARKET, LIMIT, LIMIT_MAKER)
+        :param price: the order price
+        :return: the id assigned by the connector to the order (the client id)
+        """
+        order_id = tegro_utils.get_client_order_id(False)
+        safe_ensure_future(self._create_order(
+            trade_type=TradeType.SELL,
+            order_id=order_id,
+            trading_pair=trading_pair,
+            amount=amount,
+            order_type=order_type,
+            price=price))
+        return order_id
+
+    async def _create_order(self,
+                            trade_type: TradeType,
+                            order_id: str,
+                            trading_pair: str,
+                            amount: Decimal,
+                            order_type: OrderType,
+                            price: Optional[Decimal] = None):
+        """
+        Creates a an order in the exchange using the parameters to configure it
+
+        :param trade_type: the side of the order (BUY of SELL)
+        :param order_id: the id that should be assigned to the order (the client id)
+        :param trading_pair: the token pair to operate with
+        :param amount: the order amount
+        :param order_type: the type of order to create (MARKET, LIMIT, LIMIT_MAKER)
+        :param price: the order price
+        """
+        exchange_order_id = ""
+        trading_rule = self._trading_rules[trading_pair]
+
+        if order_type in [OrderType.LIMIT, OrderType.LIMIT_MAKER]:
+            order_type = OrderType.LIMIT
+            price = self.quantize_order_price(trading_pair, price)
+        quantized_amount = self.quantize_order_amount(trading_pair=trading_pair, amount=amount)
+
+        self.start_tracking_order(
+            order_id=order_id,
+            exchange_order_id=None,
+            trading_pair=trading_pair,
+            order_type=order_type,
+            trade_type=trade_type,
+            price=price,
+            amount=quantized_amount
+        )
+        if not price or price.is_nan() or price == s_decimal_0:
+            current_price: Decimal = self.get_price(trading_pair, False)
+            notional_size = current_price * quantized_amount
+        else:
+            notional_size = price * quantized_amount
+
+        if order_type not in self.supported_order_types():
+            self.logger().error(f"{order_type} is not in the list of supported order types")
+            self._update_order_after_failure(order_id=order_id, trading_pair=trading_pair)
+            return
+
+        if quantized_amount < trading_rule.min_order_size:
+            self.logger().warning(f"{trade_type.name.title()} order amount {amount} is lower than the minimum order "
+                                  f"size {trading_rule.min_order_size}. The order will not be created, increase the "
+                                  f"amount to be higher than the minimum order size.")
+            self._update_order_after_failure(order_id=order_id, trading_pair=trading_pair)
+            return
+
+        if notional_size < trading_rule.min_notional_size:
+            self.logger().warning(f"{trade_type.name.title()} order notional {notional_size} is lower than the "
+                                  f"minimum notional size {trading_rule.min_notional_size}. The order will not be "
+                                  f"created. Increase the amount or the price to be higher than the minimum notional.")
+            self._update_order_after_failure(order_id=order_id, trading_pair=trading_pair)
+            return
+
+        try:
+            exchange_order_id, update_timestamp = await self._place_order(
+                order_id=order_id,
+                trading_pair=trading_pair,
+                amount=amount,
+                trade_type=trade_type,
+                order_type=order_type,
+                price=price)
+
+            order_update: OrderUpdate = OrderUpdate(
+                client_order_id=order_id,
+                exchange_order_id=exchange_order_id,
+                trading_pair=trading_pair,
+                update_timestamp=update_timestamp,
+                new_state=OrderState.OPEN,
+            )
+            self._order_tracker.process_order_update(order_update)
+
+            return order_id, exchange_order_id
+
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            self.logger().network(
+                f"Error submitting {trade_type.name.lower()} {order_type.name.upper()} order to {self.name_cap} for "
+                f"{amount.normalize()} {trading_pair} {price.normalize()}.",
+                exc_info=True,
+                app_warning_msg=f"Failed to submit {trade_type.name.lower()} order to {self.name_cap}. Check API key and network connection."
+            )
+            self._update_order_after_failure(order_id=order_id, trading_pair=trading_pair)
+
+    async def generate_typed_data(self, amount: str, order_type: OrderType, price: Decimal, trade_type: TradeType,) -> Dict[str, Any]:
+        trading_pairs = self._trading_pairs
+        amount_str = f"{amount}"
+        side_str = CONSTANTS.SIDE_BUY if trade_type is TradeType.BUY else CONSTANTS.SIDE_SELL
+        params = {
+            "market_symbol": await self.exchange_symbol_associated_to_pair(trading_pair=trading_pairs),
+            "chain_id": CONSTANTS.CHAIN_ID,
+            "wallet_address": self.api_key,
+            "side": side_str,
+            "amount": amount_str,
+        }
+        if order_type is OrderType.LIMIT or order_type is OrderType.LIMIT_MAKER:
+            price_str = f"{price:f}"
+            params["price"] = price_str
+        data_resp = await self._api_post(
+            path_url=web_utils.public_rest_url(path_url=CONSTANTS.GENERATE_SIGN_URL, domain=self._domain),
+            params=params
+        )
+        return data_resp
+
     async def _place_order(self,
                            order_id: str,
                            trading_pair: str,
@@ -189,26 +358,34 @@ class TegroExchange(ExchangePyBase):
                            order_type: OrderType,
                            price: Decimal,
                            **kwargs) -> Tuple[str, float]:
-        request_body, transaction_data = await TegroDexClient.create_order(
-            amount, trade_type, order_type, price
-        )
-        s = await self._connector.exchange_symbol_associated_to_pair(trading_pair=trading_pair)
+        transaction_data = await self.generate_typed_data(amount, order_type, price, trade_type)
+        s = await self.exchange_symbol_associated_to_pair(trading_pair=trading_pair)
         symbol: str = s.replace('-', '_')
-        params = {
+        message = json.dumps({
+            **transaction_data["data"]["sign_data"]["domain"],
+            **{"Order": transaction_data["data"]["sign_data"]["types"]["Order"]},
+            **json.loads(transaction_data["data"]["limit_order"]["raw_order_data"])
+        }).encode("utf-8")
+
+        # Sign the message using the private key
+        signature = await self._provider.eth.account.sign_message(message, self.secret_key)
+
+        api_params = {
             "market_symbol": symbol,
             "chain_id": CONSTANTS.CHAIN_ID,
-            "side": transaction_data["data"]["side"],
-            "volume_precision": transaction_data["data"]["volume_precision"],
-            "price_precision": transaction_data["data"]["price_precision"],
-            "raw_order_data": transaction_data["data"]["raw_order_data"],
-            "signature": request_body,
-            "signed_order_type": transaction_data["signed_order_type"],
+            "side": transaction_data["data"]["limit_order"]["side"],
+            "volume_precision": transaction_data["data"]["limit_order"]["volume_precision"],
+            "price_precision": transaction_data["data"]["limit_order"]["price_precision"],
+            "raw_order_data": transaction_data["data"]["limit_order"]["raw_order_data"],
+            "market_id": transaction_data["data"]["limit_order"]["market_id"],
+            "signed_order_type": transaction_data["limit_order"]["signed_order_type"],
+            "signature": signature
         }
         try:
-            data = await self._api_request(
-                method=RESTMethod.POST,
+            data = await self._api_post(
                 path_url=CONSTANTS.ORDER_PATH_URL,
-                params=params
+                params=api_params,
+                is_auth_required=True
             )
             o_id = str(data["id"])
             transact_time = data["timestamp"] * 1e-3
@@ -218,13 +395,31 @@ class TegroExchange(ExchangePyBase):
                                     and "Unknown error, please check your request or try again later." in error_description)
             if is_server_overloaded:
                 o_id = "Unknown"
-                transact_time = self._time_synchronizer.time()
+                transact_time = int(datetime.now(timezone.utc).timestamp() * 1e3)
             else:
                 raise
         return o_id, transact_time
 
     async def _place_cancel(self, order_id: str, tracked_order: InFlightOrder):
-        pass
+        params = {
+            "ChainID": CONSTANTS.CHAIN_ID,
+            "WalletAddress": self.api_key,
+        }
+
+        try:
+            cancel_result = await self._api_put(
+                path_url=CONSTANTS.CANCEL_ORFDER_URL.format(order_id),
+                data=params,
+                is_auth_required=True)
+        except OSError as e:
+            if "HTTP status is 404" in str(e):
+                return True
+            raise e
+        if len(cancel_result) > 0:
+            if cancel_result.get("data")[0].get('id') == tracked_order.exchange_order_id:
+                return True
+
+        return False
 
     async def _format_trading_rules(self, exchange_info_dict: Dict[str, Any]) -> List[TradingRule]:
         pass
@@ -250,32 +445,32 @@ class TegroExchange(ExchangePyBase):
                 event_type = event_message.get("action")
                 # Refer to https://github.com/tegro-exchange/tegro-official-api-docs/blob/master/user-data-stream.md
                 # As per the order update section in Tegro the ID of the order being canceled is under the "C" key
-                if event_type == "executionReport":
-                    execution_type = event_message.get("x")
-                    if execution_type != "CANCELED":
-                        client_order_id = event_message.get("c")
+                if event_type == "order_placed":
+                    execution_type = event_message.get("status")
+                    if execution_type != "Cancelled":
+                        client_order_id = event_message.get("orderId")
                     else:
-                        client_order_id = event_message.get("C")
+                        client_order_id = event_message.get("orderId")
 
-                    if execution_type == "TRADE":
+                    if execution_type == "order_submitted":
                         tracked_order = self._order_tracker.all_fillable_orders.get(client_order_id)
                         if tracked_order is not None:
                             fee = TradeFeeBase.new_spot_fee(
                                 fee_schema=self.trade_fee_schema(),
                                 trade_type=tracked_order.trade_type,
-                                percent_token=event_message["N"],
-                                flat_fees=[TokenAmount(amount=Decimal(event_message["n"]), token=event_message["N"])]
+                                percent_token=event_message["quoteCurrency"],
+                                flat_fees=[TokenAmount(amount=Decimal(0), token=event_message["symbol"])]
                             )
                             trade_update = TradeUpdate(
                                 trade_id=str(event_message["id"]),
                                 client_order_id=client_order_id,
-                                exchange_order_id=str(event_message["i"]),
+                                exchange_order_id=str(event_message["orderId"]),
                                 trading_pair=tracked_order.trading_pair,
                                 fee=fee,
-                                fill_base_amount=Decimal(event_message["l"]),
-                                fill_quote_amount=Decimal(event_message["l"]) * Decimal(event_message["L"]),
-                                fill_price=Decimal(event_message["L"]),
-                                fill_timestamp=event_message["T"] * 1e-3,
+                                fill_base_amount=Decimal(event_message["quantity"]),
+                                fill_quote_amount=Decimal(event_message["quantyty"]) * Decimal(event_message["price"]),
+                                fill_price=Decimal(event_message["price"]),
+                                fill_timestamp=event_message["timestamp"] * 1e-3,
                             )
                             self._order_tracker.process_trade_update(trade_update)
 
@@ -284,9 +479,9 @@ class TegroExchange(ExchangePyBase):
                         order_update = OrderUpdate(
                             trading_pair=tracked_order.trading_pair,
                             update_timestamp=event_message["time"] * 1e-3,
-                            new_state=CONSTANTS.ORDER_STATE[event_message["X"]],
+                            new_state=CONSTANTS.ORDER_STATE[event_message["status"]],
                             client_order_id=client_order_id,
-                            exchange_order_id=str(event_message["orderid"]),
+                            exchange_order_id=str(event_message["orderId"]),
                         )
                         self._order_tracker.process_order_update(order_update=order_update)
 
@@ -340,6 +535,7 @@ class TegroExchange(ExchangePyBase):
                 tasks.append(self._api_get(
                     path_url=CONSTANTS.TRADES_PATH_URL,
                     params=params,
+                    limit_id=CONSTANTS.TRADES_PATH_URL,
                     is_auth_required=True))
 
             self.logger().debug(f"Polling for order fills of {len(tasks)} trading pairs.")
@@ -361,8 +557,8 @@ class TegroExchange(ExchangePyBase):
                         fee = TradeFeeBase.new_spot_fee(
                             fee_schema=self.trade_fee_schema(),
                             trade_type=tracked_order.trade_type,
-                            percent_token=trade["commissionAsset"],
-                            flat_fees=[TokenAmount(amount=Decimal(trade["commission"]), token=trade["commissionAsset"])]
+                            percent_token=trade["quoteCurrency"],
+                            flat_fees=[TokenAmount(amount=Decimal(0), token=trade["quoteCurrency"])]
                         )
                         trade_update = TradeUpdate(
                             trade_id=str(trade["id"]),
@@ -370,8 +566,8 @@ class TegroExchange(ExchangePyBase):
                             exchange_order_id=exchange_order_id,
                             trading_pair=trading_pair,
                             fee=fee,
-                            fill_base_amount=Decimal(trade["qty"]),
-                            fill_quote_amount=Decimal(trade["quoteQty"]),
+                            fill_base_amount=Decimal(trade["quantity"]),
+                            fill_quote_amount=Decimal(trade["quantity"]),
                             fill_price=Decimal(trade["price"]),
                             fill_timestamp=trade["time"] * 1e-3,
                         )
@@ -395,8 +591,8 @@ class TegroExchange(ExchangePyBase):
                                 trade_fee=DeductedFromReturnsTradeFee(
                                     flat_fees=[
                                         TokenAmount(
-                                            trade["commissionAsset"],
-                                            Decimal(trade["commission"])
+                                            trade["quoteCurrency"],
+                                            Decimal(0)
                                         )
                                     ]
                                 ),
@@ -416,13 +612,15 @@ class TegroExchange(ExchangePyBase):
 
         account_info = await self._api_get(
             path_url=CONSTANTS.ACCOUNTS_PATH_URL.format(f"{CONSTANTS.CHAIN_ID}/{self.api_key}"),
+            limit_id=CONSTANTS.ACCOUNTS_PATH_URL,
             is_auth_required=False)
+
         balances = account_info
-        print(balances.items())
-        for balance_entry in balances.items():
+        for balance_entry in balances:
             asset_name = balance_entry["symbol"]
+            free_balance = Decimal(balance_entry["balance"])
             total_balance = Decimal(balance_entry["balance"])
-            self._account_available_balances[asset_name] = total_balance
+            self._account_available_balances[asset_name] = free_balance
             self._account_balances[asset_name] = total_balance
             remote_asset_names.add(asset_name)
 
