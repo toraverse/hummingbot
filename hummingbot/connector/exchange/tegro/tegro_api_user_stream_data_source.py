@@ -4,7 +4,6 @@ from typing import Optional
 
 import hummingbot.connector.exchange.tegro.tegro_web_utils as web_utils
 from hummingbot.connector.exchange.tegro.tegro_auth import TegroAuth
-from hummingbot.connector.time_synchronizer import TimeSynchronizer
 from hummingbot.core.api_throttler.async_throttler import AsyncThrottler
 from hummingbot.core.data_type.user_stream_tracker_data_source import UserStreamTrackerDataSource
 from hummingbot.core.web_assistant.connections.data_types import WSJSONRequest
@@ -29,10 +28,8 @@ class TegroUserStreamDataSource(UserStreamTrackerDataSource):
         domain: Optional[str] = None,
         throttler: Optional[AsyncThrottler] = None,
         api_factory: Optional[WebAssistantsFactory] = None,
-        time_synchronizer: Optional[TimeSynchronizer] = None,
     ):
         super().__init__()
-        self._time_synchronizer = time_synchronizer
         self._domain = domain
         self._throttler = throttler
         self._api_factory: WebAssistantsFactory = api_factory or web_utils.build_api_factory(

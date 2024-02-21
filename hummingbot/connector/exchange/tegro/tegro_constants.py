@@ -25,7 +25,7 @@ CHAIN_ID = 80001
 TICKER_PRICE_CHANGE_PATH_URL = "market"
 TICKER_BOOK_PATH_URL = "market/list"
 EXCHANGE_INFO_PATH_URL = "market"
-PING_PATH_URL = "chain/list"  # TODO
+PING_PATH_URL = "market/list"  # TODO
 SNAPSHOT_PATH_URL = "market/orderbook/depth"
 
 # REST API ENDPOINTS
@@ -35,6 +35,7 @@ GENERATE_SIGN_URL = "market/orders/typedData/generate"
 TRADES_PATH_URL = "market/trades"
 TRADES_FOR_ORDER_PATH_URL = "market/orders/trades/{}"
 ORDER_PATH_URL = "market/orders"
+ORDDER_LIST = "market/orders/user/{}"
 USER_ORDER_PATH_URL = "market/orders/user"
 CANCEL_ORFDER_URL = "market/orders/cancel/{}"
 CANCEL_ORDER_ALL_URL = "market/orders/cancelAll"

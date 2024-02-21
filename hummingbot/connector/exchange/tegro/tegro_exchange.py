@@ -123,7 +123,7 @@ class TegroExchange(ExchangePyBase):
         return self._trading_required
 
     def supported_order_types(self):
-        return [OrderType.LIMIT, OrderType.LIMIT_MAKER, OrderType.MARKET]
+        return [OrderType.LIMIT, OrderType.LIMIT_MAKER]
 
     async def get_all_pairs_prices(self) -> List[Dict[str, str]]:
         params = {"chain_id": CONSTANTS.CHAIN_ID, "verified": "true", "page": 1, "page_size": 20, "sort_order": "desc"}
@@ -167,9 +167,9 @@ class TegroExchange(ExchangePyBase):
     def _create_user_stream_data_source(self) -> UserStreamTrackerDataSource:
         return TegroUserStreamDataSource(
             auth=self._auth,
+            domain=self.domain,
             throttler=self._throttler,
             api_factory=self._web_assistants_factory,
-            domain=self.domain,
         )
 
     async def _initialize_market_list(self):
@@ -385,7 +385,7 @@ class TegroExchange(ExchangePyBase):
             data = await self._api_post(
                 path_url=CONSTANTS.ORDER_PATH_URL,
                 params=api_params,
-                is_auth_required=True
+                is_auth_required=False
             )
             o_id = str(data["id"])
             transact_time = data["timestamp"] * 1e-3
@@ -452,14 +452,14 @@ class TegroExchange(ExchangePyBase):
                     else:
                         client_order_id = event_message.get("orderId")
 
-                    if execution_type == "order_submitted":
+                    if execution_type == "Matched":
                         tracked_order = self._order_tracker.all_fillable_orders.get(client_order_id)
                         if tracked_order is not None:
                             fee = TradeFeeBase.new_spot_fee(
                                 fee_schema=self.trade_fee_schema(),
                                 trade_type=tracked_order.trade_type,
-                                percent_token=event_message["quoteCurrency"],
-                                flat_fees=[TokenAmount(amount=Decimal(0), token=event_message["symbol"])]
+                                percent_token=event_message["baseCurrency"],
+                                flat_fees=[TokenAmount(amount=Decimal(0), token=event_message["baseCurrency"])]
                             )
                             trade_update = TradeUpdate(
                                 trade_id=str(event_message["id"]),
@@ -528,7 +528,7 @@ class TegroExchange(ExchangePyBase):
                 params = {
                     "symbol": await self.exchange_symbol_associated_to_pair(trading_pair=trading_pair),
                     "chain_id": CONSTANTS.CHAIN_ID,
-                    "market_id": f'{self._markets["data"]["market_id"]}',
+                    "market_id": f'{self._markets["ID"]}',
                 }
                 if self._last_poll_timestamp > 0:
                     params["startTime"] = query_time
@@ -536,7 +536,7 @@ class TegroExchange(ExchangePyBase):
                     path_url=CONSTANTS.TRADES_PATH_URL,
                     params=params,
                     limit_id=CONSTANTS.TRADES_PATH_URL,
-                    is_auth_required=True))
+                    is_auth_required=False))
 
             self.logger().debug(f"Polling for order fills of {len(tasks)} trading pairs.")
             results = await safe_gather(*tasks, return_exceptions=True)
@@ -557,8 +557,8 @@ class TegroExchange(ExchangePyBase):
                         fee = TradeFeeBase.new_spot_fee(
                             fee_schema=self.trade_fee_schema(),
                             trade_type=tracked_order.trade_type,
-                            percent_token=trade["quoteCurrency"],
-                            flat_fees=[TokenAmount(amount=Decimal(0), token=trade["quoteCurrency"])]
+                            percent_token=trade["baseCurrency"],
+                            flat_fees=[TokenAmount(amount=Decimal(0), token=trade["baseCurrency"])]
                         )
                         trade_update = TradeUpdate(
                             trade_id=str(trade["id"]),
@@ -587,11 +587,11 @@ class TegroExchange(ExchangePyBase):
                                 trade_type=TradeType.BUY if trade["isBuyer"] else TradeType.SELL,
                                 order_type=OrderType.LIMIT_MAKER if trade["isMaker"] else OrderType.LIMIT,
                                 price=Decimal(trade["price"]),
-                                amount=Decimal(trade["qty"]),
+                                amount=Decimal(trade["quantity"]),
                                 trade_fee=DeductedFromReturnsTradeFee(
                                     flat_fees=[
                                         TokenAmount(
-                                            trade["quoteCurrency"],
+                                            trade["baseCurrency"],
                                             Decimal(0)
                                         )
                                     ]
@@ -601,10 +601,54 @@ class TegroExchange(ExchangePyBase):
                         self.logger().info(f"Recreating missing trade in TradeFill: {trade}")
 
     async def _all_trade_updates_for_order(self, order: InFlightOrder) -> List[TradeUpdate]:
-        pass
+        trade_updates = []
+
+        if order.exchange_order_id is not None:
+            exchange_order_id = int(order.exchange_order_id)
+            trading_pair = await self.exchange_symbol_associated_to_pair(trading_pair=order.trading_pair)
+            all_fills_response = await self._api_get(
+                path_url=CONSTANTS.TRADES_FOR_ORDER_PATH_URL,
+                limit_id=CONSTANTS.TRADES_FOR_ORDER_PATH_URL)
+
+            for trade in all_fills_response:
+                exchange_order_id = str(trade["orderId"])
+                fee = TradeFeeBase.new_spot_fee(
+                    fee_schema=self.trade_fee_schema(),
+                    trade_type=order.trade_type,
+                    percent_token=trade["baseCurrency"],
+                    flat_fees=[TokenAmount(amount=Decimal(0), token=trade["baseCurrency"])]
+                )
+                trade_update = TradeUpdate(
+                    trade_id=str(trade["id"]),
+                    client_order_id=order.client_order_id,
+                    exchange_order_id=exchange_order_id,
+                    trading_pair=trading_pair,
+                    fee=fee,
+                    fill_base_amount=Decimal(trade["quantity"]),
+                    fill_quote_amount=Decimal(trade["quantity"]),
+                    fill_price=Decimal(trade["price"]),
+                    fill_timestamp=trade["time"] * 1e-3,
+                )
+                trade_updates.append(trade_update)
+
+        return trade_updates
 
     async def _request_order_status(self, tracked_order: InFlightOrder) -> OrderUpdate:
-        pass
+        updated_order_data = await self._api_get(
+            path_url=CONSTANTS.TRADES_FOR_ORDER_PATH_URL.format(f"{tracked_order.client_order_id}"),
+        )
+
+        new_state = CONSTANTS.ORDER_STATE[updated_order_data["status"]]
+
+        order_update = OrderUpdate(
+            client_order_id=tracked_order.client_order_id,
+            exchange_order_id=str(updated_order_data["orderId"]),
+            trading_pair=tracked_order.trading_pair,
+            update_timestamp=updated_order_data["time"] * 1e-3,
+            new_state=new_state,
+        )
+
+        return order_update
 
     async def _update_balances(self):
         local_asset_names = set(self._account_balances.keys())
