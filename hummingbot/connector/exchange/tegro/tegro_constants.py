@@ -16,8 +16,8 @@ MAX_ORDER_ID_LEN = 32
 
 TEGRO_BASE_URL = "https://api.testnet.tegro.com/v2/"
 TESTNET_BASE_URL = "https://api.testnet.tegro.com/v2/"
-TEGRO_WS_URL = "wss://api.testnet.tegro.com/v2/ws"
-TESTNET_WS_URL = "wss://api.testnet.tegro.com/v2/ws"
+TEGRO_WS_URL = "wss://events.testnet.tegro.com/ws"
+TESTNET_WS_URL = "wss://events.testnet.tegro.com/ws"
 
 CHAIN_ID = 80001
 

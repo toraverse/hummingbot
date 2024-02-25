@@ -405,24 +405,34 @@ class TegroExchange(ExchangePyBase):
             "ChainID": CONSTANTS.CHAIN_ID,
             "WalletAddress": self.api_key,
         }
-
-        try:
-            cancel_result = await self._api_put(
-                path_url=CONSTANTS.CANCEL_ORFDER_URL.format(order_id),
-                data=params,
-                is_auth_required=True)
-        except OSError as e:
-            if "HTTP status is 404" in str(e):
-                return True
-            raise e
-        if len(cancel_result) > 0:
-            if cancel_result.get("data")[0].get('id') == tracked_order.exchange_order_id:
-                return True
-
+        cancel_result = await self._api_put(
+            path_url=CONSTANTS.CANCEL_ORFDER_URL.format(order_id),
+            data=params,
+            is_auth_required=True)
+        if cancel_result != "Order Cancel request is successful.":
+            return True
         return False
 
     async def _format_trading_rules(self, exchange_info_dict: Dict[str, Any]) -> List[TradingRule]:
-        pass
+        trading_pair_rules = exchange_info_dict.get("Symbol", [])
+        retval = []
+        for rule in filter(tegro_utils.is_exchange_information_valid, trading_pair_rules):
+            try:
+                trading_pair = await self.trading_pair_associated_to_exchange_symbol(symbol=rule.get("Symbol"))
+                min_order_size = Decimal(rule["ticker"]["base_volume"])
+                min_price_inc = Decimal(rule["ticker"]['price_high_24h'])
+                min_amount_inc = Decimal(rule['BaseDecimal'])
+                min_notional = Decimal(rule['QuoteDecimal'])
+                retval.append(
+                    TradingRule(trading_pair,
+                                min_order_size=min_order_size,
+                                min_price_increment=min_price_inc,
+                                min_base_amount_increment=min_amount_inc,
+                                min_notional_size=min_notional))
+
+            except Exception:
+                self.logger().exception(f"Error parsing the trading pair rule {rule}. Skipping.")
+        return retval
 
     async def _status_polling_loop_fetch_updates(self):
         await self._update_order_fills_from_trades()
@@ -436,69 +446,93 @@ class TegroExchange(ExchangePyBase):
 
     async def _user_stream_event_listener(self):
         """
-        This functions runs in background continuously processing the events received from the exchange by the user
-        stream data source. It keeps reading events from the queue until the task is interrupted.
-        The events received are balance updates, order updates and trade events.
+        Listens to messages from _user_stream_tracker.user_stream queue.
+        Traders, Orders, and Balance updates from the WS.
         """
+        user_channels = CONSTANTS.WS_METHODS
         async for event_message in self._iter_user_event_queue():
             try:
-                event_type = event_message.get("action")
-                # Refer to https://github.com/tegro-exchange/tegro-official-api-docs/blob/master/user-data-stream.md
-                # As per the order update section in Tegro the ID of the order being canceled is under the "C" key
-                if event_type == "order_placed":
-                    execution_type = event_message.get("status")
-                    if execution_type != "Cancelled":
-                        client_order_id = event_message.get("orderId")
-                    else:
-                        client_order_id = event_message.get("orderId")
-
-                    if execution_type == "Matched":
-                        tracked_order = self._order_tracker.all_fillable_orders.get(client_order_id)
-                        if tracked_order is not None:
-                            fee = TradeFeeBase.new_spot_fee(
-                                fee_schema=self.trade_fee_schema(),
-                                trade_type=tracked_order.trade_type,
-                                percent_token=event_message["baseCurrency"],
-                                flat_fees=[TokenAmount(amount=Decimal(0), token=event_message["baseCurrency"])]
-                            )
-                            trade_update = TradeUpdate(
-                                trade_id=str(event_message["id"]),
-                                client_order_id=client_order_id,
-                                exchange_order_id=str(event_message["orderId"]),
-                                trading_pair=tracked_order.trading_pair,
-                                fee=fee,
-                                fill_base_amount=Decimal(event_message["quantity"]),
-                                fill_quote_amount=Decimal(event_message["quantyty"]) * Decimal(event_message["price"]),
-                                fill_price=Decimal(event_message["price"]),
-                                fill_timestamp=event_message["timestamp"] * 1e-3,
-                            )
-                            self._order_tracker.process_trade_update(trade_update)
-
-                    tracked_order = self._order_tracker.all_updatable_orders.get(client_order_id)
-                    if tracked_order is not None:
-                        order_update = OrderUpdate(
-                            trading_pair=tracked_order.trading_pair,
-                            update_timestamp=event_message["time"] * 1e-3,
-                            new_state=CONSTANTS.ORDER_STATE[event_message["status"]],
-                            client_order_id=client_order_id,
-                            exchange_order_id=str(event_message["orderId"]),
-                        )
-                        self._order_tracker.process_order_update(order_update=order_update)
-
-                elif event_type == "outboundAccountPosition":
-                    balances = event_message["B"]
-                    for balance_entry in balances:
-                        asset_name = balance_entry["a"]
-                        free_balance = Decimal(balance_entry["f"])
-                        total_balance = Decimal(balance_entry["f"]) + Decimal(balance_entry["l"])
-                        self._account_available_balances[asset_name] = free_balance
-                        self._account_balances[asset_name] = total_balance
+                channel: str = event_message.get("action", None)
+                results: Dict[str, Any] = event_message.get("d", {})
+                if "code" not in event_message and channel not in user_channels.values():
+                    self.logger().error(
+                        f"Unexpected message in user stream: {event_message}.", exc_info=True)
+                    continue
+                if channel == CONSTANTS.WS_METHODS["TRADES_UPDATE"]:
+                    self._process_trade_message(results)
+                elif channel == CONSTANTS.WS_METHODS["ORDER_SUBMITTED"]:
+                    self._process_order_message(event_message)
 
             except asyncio.CancelledError:
                 raise
             except Exception:
-                self.logger().error("Unexpected error in user stream listener loop.", exc_info=True)
+                self.logger().error(
+                    "Unexpected error in user stream listener loop.", exc_info=True)
                 await self._sleep(5.0)
+
+    def _create_trade_update_with_order_fill_data(
+            self,
+            order_fill: Dict[str, Any],
+            order: InFlightOrder):
+
+        fee = TradeFeeBase.new_spot_fee(
+            fee_schema=self.trade_fee_schema(),
+            trade_type=order.trade_type,
+            percent_token=order_fill["baseCurrency"],
+            flat_fees=[TokenAmount(
+                amount=Decimal(0),
+                token=order_fill["baseCurrency"]
+            )]
+        )
+        timestamp_dt = datetime.strptime(order_fill["time"], '%Y%m%dT%H%M%S.%fZ')
+        formatted_time = timestamp_dt.strftime('%Y%m%d')
+        trade_update = TradeUpdate(
+            trade_id=str(order_fill["id"]),
+            client_order_id=order.client_order_id,
+            exchange_order_id=order.exchange_order_id,
+            trading_pair=order.trading_pair,
+            fee=fee,
+            fill_base_amount=Decimal(order_fill["quantity"]),
+            fill_quote_amount=Decimal(order_fill["quantityFilled"]),
+            fill_price=Decimal(order_fill["price"]),
+            fill_timestamp=formatted_time,
+        )
+        return trade_update
+
+    def _process_trade_message(self, trade: Dict[str, Any], client_order_id: Optional[str] = None):
+        client_order_id = client_order_id or str(trade["action"])
+        tracked_order = self._order_tracker.all_fillable_orders.get(client_order_id)
+        if tracked_order is None:
+            self.logger().debug(f"Ignoring trade message with id {client_order_id}: not in in_flight_orders.")
+        else:
+            trade_update = self._create_trade_update_with_order_fill_data(
+                order_fill=trade,
+                order=tracked_order)
+            self._order_tracker.process_trade_update(trade_update)
+
+    def _create_order_update_with_order_status_data(self, order_status: Dict[str, Any], order: InFlightOrder):
+        timestamp_dt = datetime.strptime(order_status["data"]["time"], '%Y%m%dT%H%M%S.%fZ')
+        formatted_time = timestamp_dt.strftime('%Y%m%d')
+        client_order_id = str(order_status["data"].get("orderId", ""))
+        order_update = OrderUpdate(
+            trading_pair=order.trading_pair,
+            update_timestamp=int(formatted_time),
+            new_state=CONSTANTS.WS_METHODS[order_status["data"]["status"]],
+            client_order_id=client_order_id,
+            exchange_order_id=str(order_status["data"]["orderId"]),
+        )
+        return order_update
+
+    def _process_order_message(self, raw_msg: Dict[str, Any]):
+        order_msg = raw_msg.get("data", {})
+        client_order_id = str(order_msg.get("orderId", ""))
+        tracked_order = self._order_tracker.all_updatable_orders.get(client_order_id)
+        if not tracked_order:
+            self.logger().debug(f"Ignoring order message with id {client_order_id}: not in in_flight_orders.")
+            return
+
+        order_update = self._create_order_update_with_order_status_data(order_status=raw_msg, order=tracked_order)
+        self._order_tracker.process_order_update(order_update=order_update)
 
     async def _update_order_fills_from_trades(self):
         """
@@ -516,7 +550,6 @@ class TegroExchange(ExchangePyBase):
 
         if (long_interval_current_tick > long_interval_last_tick
                 or (self.in_flight_orders and small_interval_current_tick > small_interval_last_tick)):
-            query_time = int(self._last_trades_poll_tegro_timestamp * 1e3)
             self._last_trades_poll_tegro_timestamp = self._time_synchronizer.time()
             order_by_exchange_id_map = {}
             for order in self._order_tracker.all_fillable_orders.values():
@@ -526,16 +559,13 @@ class TegroExchange(ExchangePyBase):
             trading_pairs = self.trading_pairs
             for trading_pair in trading_pairs:
                 params = {
-                    "symbol": await self.exchange_symbol_associated_to_pair(trading_pair=trading_pair),
                     "chain_id": CONSTANTS.CHAIN_ID,
                     "market_id": f'{self._markets["ID"]}',
                 }
-                if self._last_poll_timestamp > 0:
-                    params["startTime"] = query_time
                 tasks.append(self._api_get(
-                    path_url=CONSTANTS.TRADES_PATH_URL,
+                    path_url=CONSTANTS.TRADES_FOR_ORDER_PATH_URL.format(self.api_key),
                     params=params,
-                    limit_id=CONSTANTS.TRADES_PATH_URL,
+                    limit_id=CONSTANTS.TRADES_FOR_ORDER_PATH_URL,
                     is_auth_required=False))
 
             self.logger().debug(f"Polling for order fills of {len(tasks)} trading pairs.")
@@ -560,32 +590,36 @@ class TegroExchange(ExchangePyBase):
                             percent_token=trade["baseCurrency"],
                             flat_fees=[TokenAmount(amount=Decimal(0), token=trade["baseCurrency"])]
                         )
+                        timestamp_dt = datetime.strptime(trade["time"], '%Y%m%dT%H%M%S.%fZ')
+                        formatted_time = timestamp_dt.strftime('%Y%m%d')
                         trade_update = TradeUpdate(
-                            trade_id=str(trade["id"]),
+                            trade_id=str(trade["orderId"]),
                             client_order_id=tracked_order.client_order_id,
                             exchange_order_id=exchange_order_id,
                             trading_pair=trading_pair,
                             fee=fee,
                             fill_base_amount=Decimal(trade["quantity"]),
-                            fill_quote_amount=Decimal(trade["quantity"]),
+                            fill_quote_amount=Decimal(trade["quantityFilled"]),
                             fill_price=Decimal(trade["price"]),
-                            fill_timestamp=trade["time"] * 1e-3,
+                            fill_timestamp=formatted_time,
                         )
                         self._order_tracker.process_trade_update(trade_update)
-                    elif self.is_confirmed_new_order_filled_event(str(trade["id"]), exchange_order_id, trading_pair):
+                    elif self.is_confirmed_new_order_filled_event(str(trade["orderId"]), exchange_order_id, trading_pair):
                         # This is a fill of an order registered in the DB but not tracked any more
                         self._current_trade_fills.add(TradeFillOrderDetails(
                             market=self.display_name,
-                            exchange_trade_id=str(trade["id"]),
+                            exchange_trade_id=str(trade["orderId"]),
                             symbol=trading_pair))
+                        timestamp = datetime.strptime(trade["time"], '%Y%m%dT%H%M%S.%fZ')
+                        formatted_time = timestamp.strftime('%Y%m%d')
                         self.trigger_event(
                             MarketEvent.OrderFilled,
                             OrderFilledEvent(
-                                timestamp=float(trade["time"]) * 1e-3,
+                                timestamp=float(formatted_time),
                                 order_id=self._exchange_order_ids.get(str(trade["orderId"]), None),
                                 trading_pair=trading_pair,
-                                trade_type=TradeType.BUY if trade["isBuyer"] else TradeType.SELL,
-                                order_type=OrderType.LIMIT_MAKER if trade["isMaker"] else OrderType.LIMIT,
+                                trade_type=TradeType.BUY if trade["isTaker"] else TradeType.SELL,
+                                order_type=OrderType.LIMIT,
                                 price=Decimal(trade["price"]),
                                 amount=Decimal(trade["quantity"]),
                                 trade_fee=DeductedFromReturnsTradeFee(
@@ -596,7 +630,7 @@ class TegroExchange(ExchangePyBase):
                                         )
                                     ]
                                 ),
-                                exchange_trade_id=str(trade["id"])
+                                exchange_trade_id=str(trade["orderId"])
                             ))
                         self.logger().info(f"Recreating missing trade in TradeFill: {trade}")
 
@@ -607,10 +641,17 @@ class TegroExchange(ExchangePyBase):
             exchange_order_id = int(order.exchange_order_id)
             trading_pair = await self.exchange_symbol_associated_to_pair(trading_pair=order.trading_pair)
             all_fills_response = await self._api_get(
-                path_url=CONSTANTS.TRADES_FOR_ORDER_PATH_URL,
+                path_url=CONSTANTS.TRADES_FOR_ORDER_PATH_URL.format(self.api_key),
+                params={
+                    "chain_id": CONSTANTS.CHAIN_ID,
+                    "market_id": f'{self._markets["ID"]}',
+                },
+                is_auth_required=False,
                 limit_id=CONSTANTS.TRADES_FOR_ORDER_PATH_URL)
 
             for trade in all_fills_response:
+                timestamp = datetime.strptime(trade["time"], '%Y%m%dT%H%M%S.%fZ')
+                formatted_time = timestamp.strftime('%Y%m%d')
                 exchange_order_id = str(trade["orderId"])
                 fee = TradeFeeBase.new_spot_fee(
                     fee_schema=self.trade_fee_schema(),
@@ -619,15 +660,15 @@ class TegroExchange(ExchangePyBase):
                     flat_fees=[TokenAmount(amount=Decimal(0), token=trade["baseCurrency"])]
                 )
                 trade_update = TradeUpdate(
-                    trade_id=str(trade["id"]),
+                    trade_id=str(trade["orderId"]),
                     client_order_id=order.client_order_id,
                     exchange_order_id=exchange_order_id,
                     trading_pair=trading_pair,
                     fee=fee,
                     fill_base_amount=Decimal(trade["quantity"]),
-                    fill_quote_amount=Decimal(trade["quantity"]),
+                    fill_quote_amount=Decimal(trade["quantityFilled"]),
                     fill_price=Decimal(trade["price"]),
-                    fill_timestamp=trade["time"] * 1e-3,
+                    fill_timestamp=formatted_time,
                 )
                 trade_updates.append(trade_update)
 
@@ -635,16 +676,22 @@ class TegroExchange(ExchangePyBase):
 
     async def _request_order_status(self, tracked_order: InFlightOrder) -> OrderUpdate:
         updated_order_data = await self._api_get(
-            path_url=CONSTANTS.TRADES_FOR_ORDER_PATH_URL.format(f"{tracked_order.client_order_id}"),
+            path_url=CONSTANTS.TRADES_FOR_ORDER_PATH_URL.format(self.api_key),
+            params={
+                "chain_id": CONSTANTS.CHAIN_ID,
+                "market_id": f'{self._markets["ID"]}',
+            },
+            is_auth_required=False,
         )
 
         new_state = CONSTANTS.ORDER_STATE[updated_order_data["status"]]
-
+        timestamp = datetime.strptime(updated_order_data["time"], '%Y%m%dT%H%M%S.%fZ')
+        formatted_time = timestamp.strftime('%Y%m%d')
         order_update = OrderUpdate(
             client_order_id=tracked_order.client_order_id,
             exchange_order_id=str(updated_order_data["orderId"]),
             trading_pair=tracked_order.trading_pair,
-            update_timestamp=updated_order_data["time"] * 1e-3,
+            update_timestamp=formatted_time,
             new_state=new_state,
         )
 
@@ -705,4 +752,4 @@ class TegroExchange(ExchangePyBase):
             params=params
         )
 
-        return float(resp_json["ticker"]["price"])
+        return float(resp_json["market"]["ticker"]["price"])

@@ -59,18 +59,7 @@ class TegroUserStreamDataSource(UserStreamTrackerDataSource):
                 await ws.connect(ws_url=url)
 
                 # # send auth request
-                API_KEY = self._auth.api_key
-                auth_payload = {"action": "subscribe", "channelId": API_KEY}
-
-                auth_request: WSJSONRequest = WSJSONRequest(
-                    payload=auth_payload,
-                    is_auth_required=False
-                )
-                await ws.send(auth_request)
-
-                # # send subscribe
-                # order - Live updates on your orders
-                # wallet - Bitcoin address balance data, including total deposits & withdrawals
+                API_KEY = self._auth._api_key
                 subscribe_payload = {"action": "subscribe", "channelId": API_KEY}
 
                 subscribe_request: WSJSONRequest = WSJSONRequest(
