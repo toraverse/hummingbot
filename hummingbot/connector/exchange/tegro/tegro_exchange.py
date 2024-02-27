@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
+import eth_account
 from bidict import bidict
 from web3 import HTTPProvider, Web3
 
@@ -22,6 +23,7 @@ from hummingbot.core.data_type.trade_fee import DeductedFromReturnsTradeFee, Tok
 from hummingbot.core.data_type.user_stream_tracker_data_source import UserStreamTrackerDataSource
 from hummingbot.core.event.events import MarketEvent, OrderFilledEvent
 from hummingbot.core.utils.async_utils import safe_ensure_future, safe_gather
+from hummingbot.core.utils.gateway_config_utils import SUPPORTED_CHAINS
 from hummingbot.core.web_assistant.connections.data_types import RESTMethod
 from hummingbot.core.web_assistant.web_assistants_factory import WebAssistantsFactory
 
@@ -47,8 +49,8 @@ class TegroExchange(ExchangePyBase):
                  trading_required: bool = True,
                  domain: str = CONSTANTS.DOMAIN
                  ):
-        self.secret_key = tegro_api_secret
         self.api_key = tegro_api_key
+        self.secret_key = tegro_api_secret
         self._provider_url = CONSTANTS.TEGRO_BASE_URL
         self._provider = Web3(HTTPProvider(self._provider_url))
         self._api_factory = WebAssistantsFactory
@@ -58,6 +60,7 @@ class TegroExchange(ExchangePyBase):
         self._trading_pairs = trading_pairs
         self._last_trades_poll_tegro_timestamp = 1.0
         super().__init__(client_config_map)
+        self.real_time_balance_update = False
 
     @staticmethod
     def tegro_order_type(order_type: OrderType) -> str:
@@ -83,8 +86,8 @@ class TegroExchange(ExchangePyBase):
         return CONSTANTS.RATE_LIMITS
 
     @property
-    def market(self):
-        return self._markets
+    def wallet(self):
+        return eth_account.Account.from_key(self.secret_key)
 
     @property
     def domain(self):
@@ -173,11 +176,18 @@ class TegroExchange(ExchangePyBase):
         )
 
     async def _initialize_market_list(self):
+        params = {"chain_id": CONSTANTS.CHAIN_ID, "verified": "true", "page": 1, "page_size": 20, "sort_order": "desc"}
         try:
-            params = {"chain_id": CONSTANTS.CHAIN_ID, "verified": "true", "page": 1, "page_size": 20, "sort_order": "desc"}
-            self._markets = await self._api_get(path_url=self.check_network_request_path, params=params)
+            self._markets = await self._api_request(
+                path_url=CONSTANTS.MARKET_LIST_PATH_URL,
+                params=params,
+                method=RESTMethod.GET,
+            )
         except Exception:
-            self.logger().exception("There was an error requesting exchange info.")
+            self.logger().error(
+                "Unexpected error occurred fetching market data...", exc_info=True
+            )
+            raise
 
     def _get_fee(self,
                  base_currency: str,
@@ -405,10 +415,11 @@ class TegroExchange(ExchangePyBase):
             "ChainID": CONSTANTS.CHAIN_ID,
             "WalletAddress": self.api_key,
         }
-        cancel_result = await self._api_put(
+        cancel_result = await self._api_post(
             path_url=CONSTANTS.CANCEL_ORFDER_URL.format(order_id),
             data=params,
-            is_auth_required=True)
+            is_auth_required=True
+        )
         if cancel_result != "Order Cancel request is successful.":
             return True
         return False
@@ -484,8 +495,6 @@ class TegroExchange(ExchangePyBase):
                 token=order_fill["baseCurrency"]
             )]
         )
-        timestamp_dt = datetime.strptime(order_fill["time"], '%Y%m%dT%H%M%S.%fZ')
-        formatted_time = timestamp_dt.strftime('%Y%m%d')
         trade_update = TradeUpdate(
             trade_id=str(order_fill["id"]),
             client_order_id=order.client_order_id,
@@ -493,9 +502,9 @@ class TegroExchange(ExchangePyBase):
             trading_pair=order.trading_pair,
             fee=fee,
             fill_base_amount=Decimal(order_fill["quantity"]),
-            fill_quote_amount=Decimal(order_fill["quantityFilled"]),
+            fill_quote_amount=Decimal(order_fill["quantity"]),
             fill_price=Decimal(order_fill["price"]),
-            fill_timestamp=formatted_time,
+            fill_timestamp=tegro_utils.datetime_val_or_now(order_fill['time'], on_error_return_now=True).timestamp(),
         )
         return trade_update
 
@@ -511,8 +520,7 @@ class TegroExchange(ExchangePyBase):
             self._order_tracker.process_trade_update(trade_update)
 
     def _create_order_update_with_order_status_data(self, order_status: Dict[str, Any], order: InFlightOrder):
-        timestamp_dt = datetime.strptime(order_status["data"]["time"], '%Y%m%dT%H%M%S.%fZ')
-        formatted_time = timestamp_dt.strftime('%Y%m%d')
+        formatted_time = tegro_utils.datetime_val_or_now(order_status["data"]['time'], on_error_return_now=True).timestamp()
         client_order_id = str(order_status["data"].get("orderId", ""))
         order_update = OrderUpdate(
             trading_pair=order.trading_pair,
@@ -590,38 +598,40 @@ class TegroExchange(ExchangePyBase):
                             percent_token=trade["baseCurrency"],
                             flat_fees=[TokenAmount(amount=Decimal(0), token=trade["baseCurrency"])]
                         )
-                        timestamp_dt = datetime.strptime(trade["time"], '%Y%m%dT%H%M%S.%fZ')
-                        formatted_time = timestamp_dt.strftime('%Y%m%d')
+
+                        trade_id = str(tegro_utils.int_val_or_none(trade.get("id"), on_error_return_none=True))
+                        if trade_id is None:
+                            trade_id = "0"
+                            self.logger().warning(f'W001: Received trade message with no trade_id :{trade}')
+
                         trade_update = TradeUpdate(
-                            trade_id=str(trade["orderId"]),
+                            trade_id=trade_id,
                             client_order_id=tracked_order.client_order_id,
                             exchange_order_id=exchange_order_id,
                             trading_pair=trading_pair,
                             fee=fee,
                             fill_base_amount=Decimal(trade["quantity"]),
-                            fill_quote_amount=Decimal(trade["quantityFilled"]),
+                            fill_quote_amount=Decimal(trade["quantity"]),
                             fill_price=Decimal(trade["price"]),
-                            fill_timestamp=formatted_time,
+                            fill_timestamp=tegro_utils.datetime_val_or_now((trade['time']), on_error_return_now=True).timestamp(),
                         )
                         self._order_tracker.process_trade_update(trade_update)
-                    elif self.is_confirmed_new_order_filled_event(str(trade["orderId"]), exchange_order_id, trading_pair):
+                    elif self.is_confirmed_new_order_filled_event(str(trade["id"]), exchange_order_id, trading_pair):
                         # This is a fill of an order registered in the DB but not tracked any more
                         self._current_trade_fills.add(TradeFillOrderDetails(
                             market=self.display_name,
-                            exchange_trade_id=str(trade["orderId"]),
+                            exchange_trade_id=str(trade["id"]),
                             symbol=trading_pair))
-                        timestamp = datetime.strptime(trade["time"], '%Y%m%dT%H%M%S.%fZ')
-                        formatted_time = timestamp.strftime('%Y%m%d')
                         self.trigger_event(
                             MarketEvent.OrderFilled,
                             OrderFilledEvent(
-                                timestamp=float(formatted_time),
+                                timestamp=tegro_utils.datetime_val_or_now(trade.get('time'), on_error_return_now=True).timestamp(),
                                 order_id=self._exchange_order_ids.get(str(trade["orderId"]), None),
                                 trading_pair=trading_pair,
                                 trade_type=TradeType.BUY if trade["isTaker"] else TradeType.SELL,
                                 order_type=OrderType.LIMIT,
-                                price=Decimal(trade["price"]),
-                                amount=Decimal(trade["quantity"]),
+                                price=tegro_utils.decimal_val_or_none(trade["price"]),
+                                amount=tegro_utils.decimal_val_or_none(trade["quantity"]),
                                 trade_fee=DeductedFromReturnsTradeFee(
                                     flat_fees=[
                                         TokenAmount(
@@ -700,6 +710,16 @@ class TegroExchange(ExchangePyBase):
     async def _update_balances(self):
         local_asset_names = set(self._account_balances.keys())
         remote_asset_names = set()
+        symbols = set()
+
+        await self._initialize_market_list()
+        data = set()
+        for res in self._markets:
+            data.update((res["BaseSymbol"], res["QuoteSymbol"]))
+
+        all_asset_names = data
+        symbols.update(SUPPORTED_CHAINS)
+        symbols.update(all_asset_names)
 
         account_info = await self._api_get(
             path_url=CONSTANTS.ACCOUNTS_PATH_URL.format(f"{CONSTANTS.CHAIN_ID}/{self.api_key}"),
@@ -709,16 +729,17 @@ class TegroExchange(ExchangePyBase):
         balances = account_info
         for balance_entry in balances:
             asset_name = balance_entry["symbol"]
-            free_balance = Decimal(balance_entry["balance"])
-            total_balance = Decimal(balance_entry["balance"])
-            self._account_available_balances[asset_name] = free_balance
-            self._account_balances[asset_name] = total_balance
-            remote_asset_names.add(asset_name)
+            if asset_name in symbols:
+                free_balance = Decimal(balance_entry["balance"])
+                total_balance = Decimal(balance_entry["balance"])
+                self._account_available_balances[asset_name] = free_balance
+                self._account_balances[asset_name] = total_balance
+                remote_asset_names.add(asset_name)
 
         asset_names_to_remove = local_asset_names.difference(remote_asset_names)
-        for asset_name in asset_names_to_remove:
-            del self._account_available_balances[asset_name]
-            del self._account_balances[asset_name]
+        for asset in asset_names_to_remove:
+            del self._account_available_balances[asset]
+            del self._account_balances[asset]
 
     async def _initialize_trading_pair_symbol_map(self):
         try:
