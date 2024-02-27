@@ -1,4 +1,5 @@
 import time
+from datetime import datetime
 from decimal import Decimal
 from typing import Any, Dict
 
@@ -44,7 +45,42 @@ def is_exchange_information_valid(exchange_info: Dict[str, Any]) -> bool:
 def get_ms_timestamp() -> int:
     return int(_time() * 1e3)
 
-# convert date string to timestampZ
+
+def int_val_or_none(string_value: str,
+                    on_error_return_none: bool = True,
+                    ) -> int:
+    try:
+        return int(string_value)
+    except Exception:
+        if on_error_return_none:
+            return None
+        else:
+            return int('0')
+
+
+def decimal_val_or_none(string_value: str,
+                        on_error_return_none: bool = True,
+                        ) -> Decimal:
+    try:
+        return Decimal(string_value)
+    except Exception:
+        if on_error_return_none:
+            return None
+        else:
+            return Decimal('0')
+
+
+def datetime_val_or_now(string_value: str,
+                        string_format: str = '%Y-%m-%dT%H:%M:%S.%fZ',
+                        on_error_return_now: bool = True,
+                        ) -> datetime:
+    try:
+        return datetime.strptime(string_value, string_format)
+    except Exception:
+        if on_error_return_now:
+            return datetime.now()
+        else:
+            return None
 
 
 def str_date_to_ts(date: str) -> int:
