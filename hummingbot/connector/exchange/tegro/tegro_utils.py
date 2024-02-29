@@ -39,7 +39,7 @@ def is_exchange_information_valid(exchange_info: Dict[str, Any]) -> bool:
     :return: True if the trading pair is enabled, False otherwise
     """
 
-    return exchange_info.get("State", None) == "verified" and exchange_info['Symbol'].split('_')
+    return exchange_info.get("State", None) == "verified"
 
 
 def get_ms_timestamp() -> int:

@@ -18,13 +18,13 @@ class SimplePMM(ScriptStrategyBase):
     exchange, with a distance defined by the ask_spread and bid_spread. Every order_refresh_time in seconds,
     the bot will cancel and replace the orders.
     """
-    bid_spread = 1
-    ask_spread = 1
+    bid_spread = 0.001
+    ask_spread = 0.001
     order_refresh_time = 15
-    order_amount = 1
+    order_amount = 0.01
     create_timestamp = 0
-    trading_pair = "POKEBALLS-USDT"
-    exchange = "tegro"
+    trading_pair = "ETH-USDT"
+    exchange = "kucoin_paper_trade"
     # Here you can use for example the LastTrade price to use in your strategy
     price_source = PriceType.MidPrice
 
