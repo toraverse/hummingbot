@@ -87,7 +87,7 @@ class TegroOrderBookTests(TestCase):
                 "price": 0.1,
                 "state": "success",
                 "symbol": "KRYPTONITE_USDT",
-                "maker": True,
+                "taker_type": "sell",
                 "time": 1708817206,
                 "txHash": "0x2f0d41ced1c7d21fe114235dfe363722f5f7026c21441f181ea39768a151c205",  # noqa: mock
             }

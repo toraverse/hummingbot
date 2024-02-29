@@ -53,7 +53,7 @@ class TegroOrderBook(OrderBook):
         ts = timestamp
         return OrderBookMessage(OrderBookMessageType.TRADE, {
             "trading_pair": msg["data"]["symbol"],
-            "trade_type": float(TradeType.SELL.value) if msg["data"]["maker"] else float(TradeType.BUY.value),
+            "trade_type": float(TradeType.SELL.value) if msg["data"]["taker_type"] else float(TradeType.BUY.value),
             "trade_id": msg["data"]["id"],
             "update_id": ts,
             "price": msg["data"]["price"],
