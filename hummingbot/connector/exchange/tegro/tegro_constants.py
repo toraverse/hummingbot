@@ -46,8 +46,8 @@ WS_HEARTBEAT_TIME_INTERVAL = 30
 
 # Tegro params
 
-SIDE_BUY = "BUY"
-SIDE_SELL = "SELL"
+SIDE_BUY = "buy"
+SIDE_SELL = "sell"
 
 ORDER_STATE = {
     "Active": OrderState.OPEN,

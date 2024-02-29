@@ -425,12 +425,41 @@ class TegroExchange(ExchangePyBase):
         return False
 
     async def _format_trading_rules(self, exchange_info_dict: Dict[str, Any]) -> List[TradingRule]:
+        """
+        Example:
+            {
+                "market": {
+                    "BaseContractAddress": "0x6464e14854d58feb60e130873329d77fcd2d8eb7",
+                    "QuoteContractAddress": "0xe5ae73187d0fed71bda83089488736cadcbf072d",
+                    "ChainId": 80001,
+                    "ID": "80001_0x6464e14854d58feb60e130873329d77fcd2d8eb7_0xe5ae73187d0fed71bda83089488736cadcbf072d",
+                    "Symbol": "KRYPTONITE_USDT",
+                    "State": "verified",
+                    "BaseSymbol": "KRYPTONITE",
+                    "QuoteSymbol": "USDT",
+                    "BaseDecimal": 4,
+                    "QuoteDecimal": 4,
+                    "CreatedAt": "2024-01-08T16:36:40.365473Z",
+                    "UpdatedAt": "2024-01-08T16:36:40.365473Z",
+                    "ticker": {
+                        "base_volume": 265306,
+                        "quote_volume": 1423455.3812000754,
+                        "price": 0.9541,
+                        "price_change_24h": -85.61,
+                        "price_high_24h": 10,
+                        "price_low_24h": 0.2806,
+                        "ask_low": 0.2806,
+                        "bid_high": 10
+                    }
+                }
+            }
+        """
         trading_pair_rules = exchange_info_dict.get("Symbol", [])
         retval = []
         for rule in filter(tegro_utils.is_exchange_information_valid, trading_pair_rules):
             try:
                 trading_pair = await self.trading_pair_associated_to_exchange_symbol(symbol=rule.get("Symbol"))
-                min_order_size = Decimal(rule["ticker"]["base_volume"])
+                min_order_size = Decimal(rule["ticker"]["quote_volume"])
                 min_price_inc = Decimal(rule["ticker"]['price_high_24h'])
                 min_amount_inc = Decimal(rule['BaseDecimal'])
                 min_notional = Decimal(rule['QuoteDecimal'])
@@ -628,7 +657,7 @@ class TegroExchange(ExchangePyBase):
                                 timestamp=tegro_utils.datetime_val_or_now(trade.get('time'), on_error_return_now=True).timestamp(),
                                 order_id=self._exchange_order_ids.get(str(trade["orderId"]), None),
                                 trading_pair=trading_pair,
-                                trade_type=TradeType.BUY if trade["isTaker"] else TradeType.SELL,
+                                trade_type=TradeType.BUY if trade.get("side") == "BUY" else TradeType.SELL,
                                 order_type=OrderType.LIMIT,
                                 price=tegro_utils.decimal_val_or_none(trade["price"]),
                                 amount=tegro_utils.decimal_val_or_none(trade["quantity"]),
@@ -640,7 +669,7 @@ class TegroExchange(ExchangePyBase):
                                         )
                                     ]
                                 ),
-                                exchange_trade_id=str(trade["orderId"])
+                                exchange_trade_id=str(tegro_utils.int_val_or_none(trade.get("id"), on_error_return_none=False)),
                             ))
                         self.logger().info(f"Recreating missing trade in TradeFill: {trade}")
 
@@ -676,7 +705,7 @@ class TegroExchange(ExchangePyBase):
                     trading_pair=trading_pair,
                     fee=fee,
                     fill_base_amount=Decimal(trade["quantity"]),
-                    fill_quote_amount=Decimal(trade["quantityFilled"]),
+                    fill_quote_amount=Decimal(trade["quantity"]),
                     fill_price=Decimal(trade["price"]),
                     fill_timestamp=formatted_time,
                 )
