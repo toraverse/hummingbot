@@ -3,6 +3,7 @@ import logging
 from typing import Optional
 
 import hummingbot.connector.exchange.tegro.tegro_web_utils as web_utils
+from hummingbot.connector.exchange.tegro import tegro_constants as CONSTANTS
 from hummingbot.connector.exchange.tegro.tegro_auth import TegroAuth
 from hummingbot.core.api_throttler.async_throttler import AsyncThrottler
 from hummingbot.core.data_type.user_stream_tracker_data_source import UserStreamTrackerDataSource
@@ -53,7 +54,7 @@ class TegroUserStreamDataSource(UserStreamTrackerDataSource):
         ws = None
         while True:
             try:
-                url = web_utils.wss_url(self._domain)
+                url = web_utils.wss_url(CONSTANTS.TEGRO_WS_URL, self._domain)
                 # # establish initial connection to websocket
                 ws: WSAssistant = await self._get_ws_assistant()
                 await ws.connect(ws_url=url)
