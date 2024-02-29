@@ -460,7 +460,7 @@ class TegroExchange(ExchangePyBase):
             try:
                 trading_pair = await self.trading_pair_associated_to_exchange_symbol(symbol=rule.get("Symbol"))
                 min_order_size = Decimal(rule["ticker"]["quote_volume"])
-                min_price_inc = Decimal(rule["ticker"]['price_high_24h'])
+                min_price_inc = Decimal(rule["ticker"]['price_low_24h'])
                 min_amount_inc = Decimal(rule['BaseDecimal'])
                 min_notional = Decimal(rule['QuoteDecimal'])
                 retval.append(
@@ -514,31 +514,37 @@ class TegroExchange(ExchangePyBase):
             self,
             order_fill: Dict[str, Any],
             order: InFlightOrder):
+        symbol = order_fill["symbol"]
+        new_symbol = symbol.split('_')[0]
 
         fee = TradeFeeBase.new_spot_fee(
             fee_schema=self.trade_fee_schema(),
             trade_type=order.trade_type,
-            percent_token=order_fill["baseCurrency"],
+            percent_token=new_symbol,
             flat_fees=[TokenAmount(
                 amount=Decimal(0),
-                token=order_fill["baseCurrency"]
+                token=new_symbol
             )]
         )
+        trade_id = str(tegro_utils.int_val_or_none(order_fill.get("id"), on_error_return_none=True))
+        if trade_id is None:
+            trade_id = "0"
+            self.logger().warning(f'W002: Received trade message with no trade_id :{order_fill}')
         trade_update = TradeUpdate(
-            trade_id=str(order_fill["id"]),
+            trade_id=str(order_fill["data"]["id"]),
             client_order_id=order.client_order_id,
             exchange_order_id=order.exchange_order_id,
             trading_pair=order.trading_pair,
             fee=fee,
-            fill_base_amount=Decimal(order_fill["quantity"]),
-            fill_quote_amount=Decimal(order_fill["quantity"]),
-            fill_price=Decimal(order_fill["price"]),
-            fill_timestamp=tegro_utils.datetime_val_or_now(order_fill['time'], on_error_return_now=True).timestamp(),
+            fill_base_amount=Decimal(order_fill["data"]["quantity"]),
+            fill_quote_amount=Decimal(order_fill["data"]["quantity"]),
+            fill_price=Decimal(order_fill["data"]["price"]),
+            fill_timestamp=tegro_utils.datetime_val_or_now(order_fill["data"]['time'], on_error_return_now=True).timestamp(),
         )
         return trade_update
 
     def _process_trade_message(self, trade: Dict[str, Any], client_order_id: Optional[str] = None):
-        client_order_id = client_order_id or str(trade["action"])
+        client_order_id = trade["data"]["ClientOrderId"] is None and '' or str(trade["data"]["ClientOrderId"])
         tracked_order = self._order_tracker.all_fillable_orders.get(client_order_id)
         if tracked_order is None:
             self.logger().debug(f"Ignoring trade message with id {client_order_id}: not in in_flight_orders.")
@@ -620,12 +626,14 @@ class TegroExchange(ExchangePyBase):
                     exchange_order_id = str(trade["orderId"])
                     if exchange_order_id in order_by_exchange_id_map:
                         # This is a fill for a tracked order
+                        symbol = trade["symbol"]
+                        new_symbol = symbol.split('_')[0]
                         tracked_order = order_by_exchange_id_map[exchange_order_id]
                         fee = TradeFeeBase.new_spot_fee(
                             fee_schema=self.trade_fee_schema(),
                             trade_type=tracked_order.trade_type,
-                            percent_token=trade["baseCurrency"],
-                            flat_fees=[TokenAmount(amount=Decimal(0), token=trade["baseCurrency"])]
+                            percent_token=new_symbol,
+                            flat_fees=[TokenAmount(amount=Decimal(0), token=new_symbol)]
                         )
 
                         trade_id = str(tegro_utils.int_val_or_none(trade.get("id"), on_error_return_none=True))
@@ -657,7 +665,7 @@ class TegroExchange(ExchangePyBase):
                                 timestamp=tegro_utils.datetime_val_or_now(trade.get('time'), on_error_return_now=True).timestamp(),
                                 order_id=self._exchange_order_ids.get(str(trade["orderId"]), None),
                                 trading_pair=trading_pair,
-                                trade_type=TradeType.BUY if trade.get("side") == "BUY" else TradeType.SELL,
+                                trade_type=TradeType.BUY if trade.get("side") == "buy" else TradeType.SELL,
                                 order_type=OrderType.LIMIT,
                                 price=tegro_utils.decimal_val_or_none(trade["price"]),
                                 amount=tegro_utils.decimal_val_or_none(trade["quantity"]),
@@ -721,6 +729,7 @@ class TegroExchange(ExchangePyBase):
                 "market_id": f'{self._markets["ID"]}',
             },
             is_auth_required=False,
+            headers={"Content-Type": "application/json"}
         )
 
         new_state = CONSTANTS.ORDER_STATE[updated_order_data["status"]]
