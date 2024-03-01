@@ -474,10 +474,10 @@ class TegroExchange(ExchangePyBase):
         for rule in filter(tegro_utils.is_exchange_information_valid, trading_pair_rules):
             try:
                 trading_pair = await self.trading_pair_associated_to_exchange_symbol(symbol=rule.get("Symbol"))
-                min_order_size = Decimal(rule["ticker"]["quote_volume"])
+                min_order_size = Decimal(0)
                 min_price_inc = Decimal(rule["ticker"]['price_low_24h'])
-                min_amount_inc = Decimal(rule['BaseDecimal'])
-                min_notional = Decimal(rule['QuoteDecimal'])
+                min_amount_inc = Decimal(rule["ticker"]['BaseDecimal'])
+                min_notional = Decimal(0)
                 retval.append(
                     TradingRule(trading_pair,
                                 min_order_size=min_order_size,

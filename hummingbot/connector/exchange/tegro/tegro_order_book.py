@@ -14,7 +14,7 @@ class TegroOrderBook(OrderBook):
             msg.update(metadata)
         return OrderBookMessage(OrderBookMessageType.SNAPSHOT, {
             "trading_pair": msg["trading_pair"],
-            "update_id": timestamp,
+            "update_id": msg["timestamp"],
             "bids": [[float(entry['price']), entry['quantity']] for entry in msg["Bids"]],
             "asks": [[float(entry['price']), entry['quantity']] for entry in msg["Asks"]],
         }, timestamp=timestamp)
@@ -53,7 +53,7 @@ class TegroOrderBook(OrderBook):
         ts = timestamp
         return OrderBookMessage(OrderBookMessageType.TRADE, {
             "trading_pair": msg["data"]["symbol"],
-            "trade_type": float(TradeType.SELL.value) if msg["data"]["taker_type"] else float(TradeType.BUY.value),
+            "trade_type": float(TradeType.SELL.value) if msg["data"]["takerType"] == "sell" else float(TradeType.BUY.value),
             "trade_id": msg["data"]["id"],
             "update_id": ts,
             "price": msg["data"]["price"],

@@ -9,7 +9,7 @@ class TegroOrderBookTests(TestCase):
     def test_snapshot_message_from_exchange(self):
         snapshot_message = TegroOrderBook.snapshot_message_from_exchange(
             msg={
-                "time": 1708817206,
+                "timestamp": 1708817206,
                 "Asks": [
                     {
                         "price": 6097.00,
@@ -30,16 +30,16 @@ class TegroOrderBookTests(TestCase):
 
         self.assertEqual(OrderBookMessageType.SNAPSHOT, snapshot_message.type)
         self.assertEqual(1640000000, snapshot_message.timestamp)
-        self.assertEqual(1708817206, snapshot_message.update_id)
+        self.assertEqual(1640000000, snapshot_message.update_id)
         self.assertEqual(-1, snapshot_message.trade_id)
         self.assertEqual(1, len(snapshot_message.bids))
         self.assertEqual(712.0, snapshot_message.bids[0].price)
         self.assertEqual(5000.0, snapshot_message.bids[0].amount)
-        self.assertEqual(1708817206, snapshot_message.bids[0].update_id)
+        self.assertEqual(1640000000, snapshot_message.bids[0].update_id)
         self.assertEqual(1, len(snapshot_message.asks))
         self.assertEqual(6097, snapshot_message.asks[0].price)
         self.assertEqual(1600.0, snapshot_message.asks[0].amount)
-        self.assertEqual(1708817206, snapshot_message.asks[0].update_id)
+        self.assertEqual(1640000000, snapshot_message.asks[0].update_id)
 
     def test_diff_message_from_exchange(self):
         diff_msg = TegroOrderBook.diff_message_from_exchange(
@@ -48,13 +48,13 @@ class TegroOrderBookTests(TestCase):
                 "data": {
                     "timestamp": 1708817206,
                     "symbol": "KRYPTONITE_USDT",
-                    "Bids": [
+                    "bids": [
                         {
                             "price": 6097.00,
                             "quantity": 1600
                         },
                     ],
-                    "Asks": [
+                    "asks": [
                         {
                             "price": 712,
                             "quantity": 5000
@@ -87,7 +87,7 @@ class TegroOrderBookTests(TestCase):
                 "price": 0.1,
                 "state": "success",
                 "symbol": "KRYPTONITE_USDT",
-                "taker_type": "sell",
+                "takerType": "sell",
                 "time": 1708817206,
                 "txHash": "0x2f0d41ced1c7d21fe114235dfe363722f5f7026c21441f181ea39768a151c205",  # noqa: mock
             }
