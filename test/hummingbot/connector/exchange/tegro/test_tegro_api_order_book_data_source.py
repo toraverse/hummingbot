@@ -94,11 +94,13 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
             "data": {
                 "amount": 1,
                 "id": "68a22415-3f6b-4d27-8996-1cbf71d89e5f",
+                "maker": "0xf3ef968dd1687df8768a960e9d473a3361146a73",  # noqa: mock
                 "marketId": "",
                 "price": 0.1,
                 "state": "success",
                 "symbol": self.ex_trading_pair,
-                "taker_type": True,
+                "taker": "0xf3ef968dd1687df8768a960e9d473a3361146a73",  # noqa: mock
+                "takerType": "buy",
                 "time": '2024-02-11T22:31:50.25114Z',
                 "txHash": "0x2f0d41ced1c7d21fe114235dfe363722f5f7026c21441f181ea39768a151c205",  # noqa: mock
             }}
@@ -108,15 +110,15 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
         resp = {
             "action": "order_book_diff",
             "data": {
-                "timestamp": 1707381444,
+                "timestamp": 1709294334,
                 "symbol": self.ex_trading_pair,
-                "Bids": [
+                "bids": [
                     {
                         "price": "60.9700",
                         "quantity": "1600"
                     },
                 ],
-                "Asks": [
+                "asks": [
                     {
                         "price": "71.29",
                         "quantity": "50000"
@@ -127,8 +129,7 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
 
     def _snapshot_response(self):
         resp = {
-            "time": 1707381444,
-            "symbol": self.ex_trading_pair,
+            "timestamp": 1709294334,
             "Bids": [
                 {
                     "price": "6097.00",
@@ -210,7 +211,7 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
             self.data_source.get_new_order_book(self.trading_pair)
         )
 
-        expected_update_id = resp["time"]
+        expected_update_id = resp["timestamp"]
 
         self.assertEqual(expected_update_id, order_book.snapshot_uid)
         bids = list(order_book.bid_entries())
@@ -472,4 +473,4 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
 
         msg: OrderBookMessage = self.async_run_with_timeout(msg_queue.get())
 
-        self.assertEqual(1707381444, msg.update_id)
+        self.assertEqual(1709294334, msg.update_id)
