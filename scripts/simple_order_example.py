@@ -24,12 +24,12 @@ class SimpleOrder(ScriptStrategyBase):
 
     # Key Parameters
     order_amount_usd = Decimal(25)
-    exchange = "tegro"
-    base = "POKEBALLS"
+    exchange = "kraken"
+    base = "SOL"
     quote = "USDT"
     side = "buy"
-    order_type = "limit"   # market or limit
-    spread = Decimal(1)  # for limit orders only
+    order_type = "market"   # market or limit
+    spread = Decimal(0.01)  # for limit orders only
 
     # Other Parameters
     order_created = False
