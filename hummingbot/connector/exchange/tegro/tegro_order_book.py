@@ -14,7 +14,7 @@ class TegroOrderBook(OrderBook):
             msg.update(metadata)
         return OrderBookMessage(OrderBookMessageType.SNAPSHOT, {
             "trading_pair": msg["trading_pair"],
-            "update_id": msg["time"],
+            "update_id": timestamp,
             "bids": [[float(entry['price']), entry['quantity']] for entry in msg["Bids"]],
             "asks": [[float(entry['price']), entry['quantity']] for entry in msg["Asks"]],
         }, timestamp=timestamp)
@@ -36,8 +36,8 @@ class TegroOrderBook(OrderBook):
         return OrderBookMessage(OrderBookMessageType.DIFF, {
             "trading_pair": msg["trading_pair"],
             "update_id": msg["data"]["timestamp"],
-            "bids": [[float(entry['price']), entry['quantity']] for entry in msg["data"]["Bids"]],
-            "asks": [[float(entry['price']), entry['quantity']] for entry in msg["data"]["Asks"]],
+            "bids": [[float(entry['price']), entry['quantity']] for entry in msg["data"]["bids"]],
+            "asks": [[float(entry['price']), entry['quantity']] for entry in msg["data"]["asks"]],
         }, timestamp=timestamp * 1e-3)
 
     @classmethod

@@ -38,6 +38,7 @@ s_float_NaN = float("nan")
 class TegroExchange(ExchangePyBase):
     UPDATE_ORDER_STATUS_MIN_INTERVAL = 10.0
     _markets = {}
+    _market = {}
 
     web_utils = web_utils
 
@@ -54,7 +55,6 @@ class TegroExchange(ExchangePyBase):
         self._provider_url = CONSTANTS.TEGRO_BASE_URL
         self._provider = Web3(HTTPProvider(self._provider_url))
         self._api_factory = WebAssistantsFactory
-        self.client_config_map = client_config_map
         self._domain = domain
         self._trading_required = trading_required
         self._trading_pairs = trading_pairs
@@ -103,7 +103,7 @@ class TegroExchange(ExchangePyBase):
 
     @property
     def trading_rules_request_path(self):
-        return CONSTANTS.EXCHANGE_INFO_PATH_URL
+        return CONSTANTS.TICKER_BOOK_PATH_URL
 
     @property
     def trading_pairs_request_path(self):
@@ -182,6 +182,22 @@ class TegroExchange(ExchangePyBase):
                 path_url=CONSTANTS.MARKET_LIST_PATH_URL,
                 params=params,
                 method=RESTMethod.GET,
+                limit_id=CONSTANTS.MARKET_LIST_PATH_URL,
+            )
+        except Exception:
+            self.logger().error(
+                "Unexpected error occurred fetching market data...", exc_info=True
+            )
+            raise
+
+    async def _initialize_verified_market(self, trading_pair: str):
+        params = {"chain_id": CONSTANTS.CHAIN_ID, "market_symbol": await self.exchange_symbol_associated_to_pair(trading_pair=trading_pair)}
+        try:
+            self._market = await self._api_request(
+                path_url=CONSTANTS.MARKET_LIST_PATH_URL,
+                params=params,
+                method=RESTMethod.GET,
+                limit_id=CONSTANTS.MARKET_LIST_PATH_URL,
             )
         except Exception:
             self.logger().error(
@@ -356,7 +372,8 @@ class TegroExchange(ExchangePyBase):
             params["price"] = price_str
         data_resp = await self._api_post(
             path_url=web_utils.public_rest_url(path_url=CONSTANTS.GENERATE_SIGN_URL, domain=self._domain),
-            params=params
+            params=params,
+            limit_id=CONSTANTS.GENERATE_SIGN_URL,
         )
         return data_resp
 
@@ -428,33 +445,31 @@ class TegroExchange(ExchangePyBase):
         """
         Example:
             {
-                "market": {
-                    "BaseContractAddress": "0x6464e14854d58feb60e130873329d77fcd2d8eb7",
-                    "QuoteContractAddress": "0xe5ae73187d0fed71bda83089488736cadcbf072d",
-                    "ChainId": 80001,
-                    "ID": "80001_0x6464e14854d58feb60e130873329d77fcd2d8eb7_0xe5ae73187d0fed71bda83089488736cadcbf072d",
-                    "Symbol": "KRYPTONITE_USDT",
-                    "State": "verified",
-                    "BaseSymbol": "KRYPTONITE",
-                    "QuoteSymbol": "USDT",
-                    "BaseDecimal": 4,
-                    "QuoteDecimal": 4,
-                    "CreatedAt": "2024-01-08T16:36:40.365473Z",
-                    "UpdatedAt": "2024-01-08T16:36:40.365473Z",
-                    "ticker": {
-                        "base_volume": 265306,
-                        "quote_volume": 1423455.3812000754,
-                        "price": 0.9541,
-                        "price_change_24h": -85.61,
-                        "price_high_24h": 10,
-                        "price_low_24h": 0.2806,
-                        "ask_low": 0.2806,
-                        "bid_high": 10
-                    }
+                "BaseContractAddress": "0x6464e14854d58feb60e130873329d77fcd2d8eb7",
+                "QuoteContractAddress": "0xe5ae73187d0fed71bda83089488736cadcbf072d",
+                "ChainId": 80001,
+                "ID": "80001_0x6464e14854d58feb60e130873329d77fcd2d8eb7_0xe5ae73187d0fed71bda83089488736cadcbf072d",
+                "Symbol": "KRYPTONITE_USDT",
+                "State": "verified",
+                "BaseSymbol": "KRYPTONITE",
+                "QuoteSymbol": "USDT",
+                "BaseDecimal": 4,
+                "QuoteDecimal": 4,
+                "CreatedAt": "2024-01-08T16:36:40.365473Z",
+                "UpdatedAt": "2024-01-08T16:36:40.365473Z",
+                "ticker": {
+                    "base_volume": 265306,
+                    "quote_volume": 1423455.3812000754,
+                    "price": 0.9541,
+                    "price_change_24h": -85.61,
+                    "price_high_24h": 10,
+                    "price_low_24h": 0.2806,
+                    "ask_low": 0.2806,
+                    "bid_high": 10
                 }
             }
         """
-        trading_pair_rules = exchange_info_dict.get("Symbol", [])
+        trading_pair_rules = exchange_info_dict
         retval = []
         for rule in filter(tegro_utils.is_exchange_information_valid, trading_pair_rules):
             try:
@@ -601,14 +616,15 @@ class TegroExchange(ExchangePyBase):
             tasks = []
             trading_pairs = self.trading_pairs
             for trading_pair in trading_pairs:
+                await self._initialize_verified_market(trading_pair=trading_pair)
                 params = {
                     "chain_id": CONSTANTS.CHAIN_ID,
-                    "market_id": f'{self._markets["ID"]}',
+                    "market_id": f'{self._market[0]["ID"]}',
                 }
                 tasks.append(self._api_get(
-                    path_url=CONSTANTS.TRADES_FOR_ORDER_PATH_URL.format(self.api_key),
+                    path_url=CONSTANTS.ORDDER_LIST.format(self.api_key),
                     params=params,
-                    limit_id=CONSTANTS.TRADES_FOR_ORDER_PATH_URL,
+                    limit_id=CONSTANTS.ORDDER_LIST,
                     is_auth_required=False))
 
             self.logger().debug(f"Polling for order fills of {len(tasks)} trading pairs.")
@@ -687,11 +703,12 @@ class TegroExchange(ExchangePyBase):
         if order.exchange_order_id is not None:
             exchange_order_id = int(order.exchange_order_id)
             trading_pair = await self.exchange_symbol_associated_to_pair(trading_pair=order.trading_pair)
+            await self._initialize_verified_market(trading_pair=trading_pair)
             all_fills_response = await self._api_get(
                 path_url=CONSTANTS.TRADES_FOR_ORDER_PATH_URL.format(self.api_key),
                 params={
                     "chain_id": CONSTANTS.CHAIN_ID,
-                    "market_id": f'{self._markets["ID"]}',
+                    "market_id": f'{self._market[0]["ID"]}',
                 },
                 is_auth_required=False,
                 limit_id=CONSTANTS.TRADES_FOR_ORDER_PATH_URL)
@@ -722,11 +739,12 @@ class TegroExchange(ExchangePyBase):
         return trade_updates
 
     async def _request_order_status(self, tracked_order: InFlightOrder) -> OrderUpdate:
+        await self._initialize_verified_market(trading_pair=tracked_order.trading_pair)
         updated_order_data = await self._api_get(
             path_url=CONSTANTS.TRADES_FOR_ORDER_PATH_URL.format(self.api_key),
             params={
                 "chain_id": CONSTANTS.CHAIN_ID,
-                "market_id": f'{self._markets["ID"]}',
+                "market_id": f'{self._market[0]["ID"]}',
             },
             is_auth_required=False,
             headers={"Content-Type": "application/json"}
@@ -812,3 +830,20 @@ class TegroExchange(ExchangePyBase):
         )
 
         return float(resp_json["market"]["ticker"]["price"])
+
+    async def _make_network_check_request(self):
+        await self._api_get(path_url=self.check_network_request_path,
+                            params = {"chain_id": CONSTANTS.CHAIN_ID, "verified": "true", "page": 1, "page_size": 20, "sort_order": "desc"},
+                            headers={"Content-Type": "application/json"})
+
+    async def _make_trading_rules_request(self) -> Any:
+        exchange_info = await self._api_get(path_url=self.trading_rules_request_path,
+                                            params = {"chain_id": CONSTANTS.CHAIN_ID, "verified": "true", "page": 1, "page_size": 20, "sort_order": "desc"},
+                                            headers={"Content-Type": "application/json"})
+        return exchange_info
+
+    async def _make_trading_pairs_request(self) -> Any:
+        exchange_info = await self._api_get(path_url=self.trading_pairs_request_path,
+                                            params = {"chain_id": CONSTANTS.CHAIN_ID, "verified": "true", "page": 1, "page_size": 20, "sort_order": "desc"},
+                                            headers={"Content-Type": "application/json"})
+        return exchange_info

@@ -127,6 +127,12 @@ RATE_LIMITS = [
         linked_limits=[LinkedLimitWeightPair(TICKER_PRICE_CHANGE_PATH_URL)]
     ),
     RateLimit(
+        limit_id=ORDDER_LIST,
+        limit=NO_LIMIT,
+        time_interval=SECOND,
+        linked_limits=[LinkedLimitWeightPair(TICKER_PRICE_CHANGE_PATH_URL)]
+    ),
+    RateLimit(
         limit_id=MARKET_LIST_PATH_URL,
         limit=NO_LIMIT,
         time_interval=SECOND,
