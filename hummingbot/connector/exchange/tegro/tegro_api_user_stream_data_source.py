@@ -12,6 +12,9 @@ from hummingbot.core.web_assistant.web_assistants_factory import WebAssistantsFa
 from hummingbot.core.web_assistant.ws_assistant import WSAssistant
 from hummingbot.logger import HummingbotLogger
 
+MESSAGE_TIMEOUT = 3.0
+PING_TIMEOUT = 5.0
+
 
 class TegroUserStreamDataSource(UserStreamTrackerDataSource):
 
@@ -50,14 +53,13 @@ class TegroUserStreamDataSource(UserStreamTrackerDataSource):
             self._ws_assistant = await self._api_factory.get_ws_assistant()
         return self._ws_assistant
 
-    async def listen_for_user_stream(self, ev_loop: asyncio.BaseEventLoop, output: asyncio.Queue):
+    async def listen_for_user_stream(self, output: asyncio.Queue):
         ws = None
         while True:
             try:
-                url = web_utils.wss_url(CONSTANTS.TEGRO_WS_URL, self._domain)
                 # # establish initial connection to websocket
                 ws: WSAssistant = await self._get_ws_assistant()
-                await ws.connect(ws_url=url)
+                await ws.connect(ws_url=CONSTANTS.TEGRO_WS_URL, ping_timeout=PING_TIMEOUT)
 
                 # # send auth request
                 API_KEY = self._auth._api_key

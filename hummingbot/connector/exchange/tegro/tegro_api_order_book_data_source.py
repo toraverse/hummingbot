@@ -56,9 +56,8 @@ class TegroAPIOrderBookDataSource(OrderBookTrackerDataSource):
         """
 
         params = {
-            "market_symbol": await self._connector.exchange_symbol_associated_to_pair(trading_pair=trading_pair),
             "chain_id": CONSTANTS.CHAIN_ID,
-            "market_id": f'{self._connector._markets.get("ID")}',
+            "market_symbol": await self._connector.exchange_symbol_associated_to_pair(trading_pair=trading_pair),
         }
 
         rest_assistant = await self._api_factory.get_rest_assistant()
@@ -125,7 +124,7 @@ class TegroAPIOrderBookDataSource(OrderBookTrackerDataSource):
 
     async def _connected_websocket_assistant(self) -> WSAssistant:
         ws: WSAssistant = await self._api_factory.get_ws_assistant()
-        await ws.connect(ws_url=tegro_web_utils.wss_url(CONSTANTS.TEGRO_WS_URL, self._domain),
+        await ws.connect(ws_url=CONSTANTS.TEGRO_WS_URL,
                          ping_timeout=CONSTANTS.WS_HEARTBEAT_TIME_INTERVAL)
         return ws
 
