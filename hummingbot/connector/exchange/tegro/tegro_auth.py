@@ -25,7 +25,7 @@ class TegroAuth(AuthBase):
         message = messages.encode_defunct(text=data)
         signed_data = Account.sign_message(message, private_key=self._api_secret)
         # Convert signature components to bytes before returning
-        return signed_data.signature
+        return signed_data.signature.hex()
 
     async def rest_authenticate(self, request: RESTRequest) -> RESTRequest:
         if request.method == RESTMethod.POST:

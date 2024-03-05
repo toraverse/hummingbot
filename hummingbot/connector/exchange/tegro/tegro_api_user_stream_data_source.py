@@ -29,7 +29,7 @@ class TegroUserStreamDataSource(UserStreamTrackerDataSource):
     def __init__(
         self,
         auth: TegroAuth,
-        domain: Optional[str] = None,
+        domain: str = CONSTANTS.DOMAIN,
         throttler: Optional[AsyncThrottler] = None,
         api_factory: Optional[WebAssistantsFactory] = None,
     ):
@@ -59,7 +59,7 @@ class TegroUserStreamDataSource(UserStreamTrackerDataSource):
             try:
                 # # establish initial connection to websocket
                 ws: WSAssistant = await self._get_ws_assistant()
-                await ws.connect(ws_url=CONSTANTS.TEGRO_WS_URL, ping_timeout=PING_TIMEOUT)
+                await ws.connect(ws_url=web_utils.wss_url(CONSTANTS.PUBLIC_WS_ENDPOINT, self._domain), ping_timeout=PING_TIMEOUT)
 
                 # # send auth request
                 API_KEY = self._auth._api_key

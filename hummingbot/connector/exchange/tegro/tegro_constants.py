@@ -14,12 +14,15 @@ MAX_ORDER_ID_LEN = 32
 # Base URL
 # https://api.testnet.tegro.com/v2/market/orders
 
+TEGRO_URL = "https://rpc-mumbai.maticvigil.com/"
 TEGRO_BASE_URL = "https://api.testnet.tegro.com/v2/"
 TESTNET_BASE_URL = "https://api.testnet.tegro.com/v2/"
-TEGRO_WS_URL = "wss://events.testnet.tegro.com/ws"
-TESTNET_WS_URL = "wss://events.testnet.tegro.com/ws"
+TEGRO_WS_URL = "wss://events.testnet.tegro.com/"
+TESTNET_WS_URL = "wss://events.testnet.tegro.com/"
 
 CHAIN_ID = 80001
+
+PUBLIC_WS_ENDPOINT = "ws"
 
 # Public API endpoints or TegroClient function
 TICKER_PRICE_CHANGE_PATH_URL = "market"

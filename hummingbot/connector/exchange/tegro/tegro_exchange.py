@@ -1,11 +1,13 @@
 import asyncio
 import json
+import math
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 import eth_account
 from bidict import bidict
+from eth_account import Account, messages
 from web3 import HTTPProvider, Web3
 
 from hummingbot.connector.constants import s_decimal_NaN
@@ -39,6 +41,7 @@ class TegroExchange(ExchangePyBase):
     UPDATE_ORDER_STATUS_MIN_INTERVAL = 10.0
     _markets = {}
     _market = {}
+    _transaction_data = {}
 
     web_utils = web_utils
 
@@ -52,7 +55,7 @@ class TegroExchange(ExchangePyBase):
                  ):
         self.api_key = tegro_api_key
         self.secret_key = tegro_api_secret
-        self._provider_url = CONSTANTS.TEGRO_BASE_URL
+        self._provider_url = CONSTANTS.TEGRO_URL
         self._provider = Web3(HTTPProvider(self._provider_url))
         self._api_factory = WebAssistantsFactory
         self._domain = domain
@@ -300,12 +303,6 @@ class TegroExchange(ExchangePyBase):
             price=price,
             amount=quantized_amount
         )
-        if not price or price.is_nan() or price == s_decimal_0:
-            current_price: Decimal = self.get_price(trading_pair, False)
-            notional_size = current_price * quantized_amount
-        else:
-            notional_size = price * quantized_amount
-
         if order_type not in self.supported_order_types():
             self.logger().error(f"{order_type} is not in the list of supported order types")
             self._update_order_after_failure(order_id=order_id, trading_pair=trading_pair)
@@ -317,14 +314,7 @@ class TegroExchange(ExchangePyBase):
                                   f"amount to be higher than the minimum order size.")
             self._update_order_after_failure(order_id=order_id, trading_pair=trading_pair)
             return
-
-        if notional_size < trading_rule.min_notional_size:
-            self.logger().warning(f"{trade_type.name.title()} order notional {notional_size} is lower than the "
-                                  f"minimum notional size {trading_rule.min_notional_size}. The order will not be "
-                                  f"created. Increase the amount or the price to be higher than the minimum notional.")
-            self._update_order_after_failure(order_id=order_id, trading_pair=trading_pair)
-            return
-
+        await self.generate_typed_data(amount, order_type, price, trade_type, trading_pair)
         try:
             exchange_order_id, update_timestamp = await self._place_order(
                 order_id=order_id,
@@ -356,27 +346,6 @@ class TegroExchange(ExchangePyBase):
             )
             self._update_order_after_failure(order_id=order_id, trading_pair=trading_pair)
 
-    async def generate_typed_data(self, amount: str, order_type: OrderType, price: Decimal, trade_type: TradeType,) -> Dict[str, Any]:
-        trading_pairs = self._trading_pairs
-        amount_str = f"{amount}"
-        side_str = CONSTANTS.SIDE_BUY if trade_type is TradeType.BUY else CONSTANTS.SIDE_SELL
-        params = {
-            "market_symbol": await self.exchange_symbol_associated_to_pair(trading_pair=trading_pairs),
-            "chain_id": CONSTANTS.CHAIN_ID,
-            "wallet_address": self.api_key,
-            "side": side_str,
-            "amount": amount_str,
-        }
-        if order_type is OrderType.LIMIT or order_type is OrderType.LIMIT_MAKER:
-            price_str = f"{price:f}"
-            params["price"] = price_str
-        data_resp = await self._api_post(
-            path_url=web_utils.public_rest_url(path_url=CONSTANTS.GENERATE_SIGN_URL, domain=self._domain),
-            params=params,
-            limit_id=CONSTANTS.GENERATE_SIGN_URL,
-        )
-        return data_resp
-
     async def _place_order(self,
                            order_id: str,
                            trading_pair: str,
@@ -385,35 +354,33 @@ class TegroExchange(ExchangePyBase):
                            order_type: OrderType,
                            price: Decimal,
                            **kwargs) -> Tuple[str, float]:
-        transaction_data = await self.generate_typed_data(amount, order_type, price, trade_type)
-        s = await self.exchange_symbol_associated_to_pair(trading_pair=trading_pair)
-        symbol: str = s.replace('-', '_')
-        message = json.dumps({
+        transaction_data = self._transaction_data
+        msg = json.dumps({
             **transaction_data["data"]["sign_data"]["domain"],
             **{"Order": transaction_data["data"]["sign_data"]["types"]["Order"]},
             **json.loads(transaction_data["data"]["limit_order"]["raw_order_data"])
         }).encode("utf-8")
 
-        # Sign the message using the private key
-        signature = await self._provider.eth.account.sign_message(message, self.secret_key)
+        message = messages.encode_defunct(msg)
+        sign = Account.sign_message(message, private_key=self.secret_key)
+        # signature = {"r": to_hex(sign["r"]), "s": to_hex(sign["s"]), "v": sign["v"]}
+        signature = sign.messageHash.hex()
 
         api_params = {
-            "market_symbol": symbol,
-            "chain_id": CONSTANTS.CHAIN_ID,
-            "side": transaction_data["data"]["limit_order"]["side"],
-            "volume_precision": transaction_data["data"]["limit_order"]["volume_precision"],
-            "price_precision": transaction_data["data"]["limit_order"]["price_precision"],
-            "raw_order_data": transaction_data["data"]["limit_order"]["raw_order_data"],
-            "market_id": transaction_data["data"]["limit_order"]["market_id"],
-            "signed_order_type": transaction_data["limit_order"]["signed_order_type"],
-            "signature": signature
+            **transaction_data["data"]["limit_order"],
+            "signature": signature,
         }
         try:
-            data = await self._api_post(
+            data = await self._api_request(
                 path_url=CONSTANTS.ORDER_PATH_URL,
-                params=api_params,
-                is_auth_required=False
+                method=RESTMethod.POST,
+                headers= {"accept": "application/json",
+                          "content-type": "application/json"},
+                data=api_params,
+                is_auth_required=False,
+                limit_id=CONSTANTS.ORDER_PATH_URL,
             )
+
             o_id = str(data["id"])
             transact_time = data["timestamp"] * 1e-3
         except IOError as e:
@@ -427,19 +394,52 @@ class TegroExchange(ExchangePyBase):
                 raise
         return o_id, transact_time
 
+    async def generate_typed_data(self, amount, order_type, price, trade_type, trading_pair) -> Dict[str, Any]:
+        side_str = CONSTANTS.SIDE_BUY if trade_type is TradeType.BUY else CONSTANTS.SIDE_SELL
+        params = {
+            "chain_id": CONSTANTS.CHAIN_ID,
+            "market_symbol": await self.exchange_symbol_associated_to_pair(trading_pair=trading_pair),
+            "side": side_str,
+            "wallet_address": self.api_key,
+            "amount": math.floor(amount),
+        }
+        if order_type is OrderType.LIMIT or order_type is OrderType.LIMIT_MAKER:
+            price_str = math.floor(price)
+            params["price"] = price_str
+        data = await self._api_request(
+            path_url=CONSTANTS.GENERATE_SIGN_URL,
+            method=RESTMethod.POST,
+            data=params,
+            is_auth_required=False,
+            limit_id=CONSTANTS.GENERATE_SIGN_URL,
+        )
+        print(data)
+        if data["message"] != "success":
+            raise IOError(f"Error submitting order {data}")
+        self._transaction_data = data
+        return data
+
     async def _place_cancel(self, order_id: str, tracked_order: InFlightOrder):
         params = {
             "ChainID": CONSTANTS.CHAIN_ID,
             "WalletAddress": self.api_key,
         }
-        cancel_result = await self._api_post(
-            path_url=CONSTANTS.CANCEL_ORFDER_URL.format(order_id),
-            data=params,
-            is_auth_required=True
-        )
-        if cancel_result != "Order Cancel request is successful.":
-            return True
-        return False
+        if tracked_order.exchange_order_id is not None:
+            try:
+                cancel_result = await self._api_post(
+                    path_url=CONSTANTS.CANCEL_ORFDER_URL.format(tracked_order.exchange_order_id),
+                    data=params,
+                    is_auth_required=True,
+                    limit_id=CONSTANTS.CANCEL_ORFDER_URL
+                )
+            except IOError as e:
+                error_description = str(e)
+                self.logger("status is 503" in error_description
+                            and "Unknown error, please check your request or try again later." in error_description)
+                raise
+            if cancel_result != "Order Cancel request is successful.":
+                return True
+            return False
 
     async def _format_trading_rules(self, exchange_info_dict: Dict[str, Any]) -> List[TradingRule]:
         """
@@ -474,16 +474,14 @@ class TegroExchange(ExchangePyBase):
         for rule in filter(tegro_utils.is_exchange_information_valid, trading_pair_rules):
             try:
                 trading_pair = await self.trading_pair_associated_to_exchange_symbol(symbol=rule.get("Symbol"))
-                min_order_size = Decimal(0)
-                min_price_inc = Decimal(rule["ticker"]['price_low_24h'])
-                min_amount_inc = Decimal(0)
-                min_notional = Decimal(0)
+                min_order_size = Decimal(2)
+                min_price_inc = Decimal(rule["ticker"]['ask_low'])
+                min_amount_inc = Decimal(rule['BaseDecimal'])
                 retval.append(
                     TradingRule(trading_pair,
                                 min_order_size=min_order_size,
                                 min_price_increment=min_price_inc,
-                                min_base_amount_increment=min_amount_inc,
-                                min_notional_size=min_notional))
+                                min_base_amount_increment=min_amount_inc))
 
             except Exception:
                 self.logger().exception(f"Error parsing the trading pair rule {rule}. Skipping.")

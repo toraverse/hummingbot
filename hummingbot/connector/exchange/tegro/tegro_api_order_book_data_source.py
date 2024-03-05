@@ -124,7 +124,7 @@ class TegroAPIOrderBookDataSource(OrderBookTrackerDataSource):
 
     async def _connected_websocket_assistant(self) -> WSAssistant:
         ws: WSAssistant = await self._api_factory.get_ws_assistant()
-        await ws.connect(ws_url=CONSTANTS.TEGRO_WS_URL,
+        await ws.connect(ws_url=tegro_web_utils.wss_url(CONSTANTS.PUBLIC_WS_ENDPOINT, self._domain),
                          ping_timeout=CONSTANTS.WS_HEARTBEAT_TIME_INTERVAL)
         return ws
 
@@ -155,8 +155,10 @@ class TegroAPIOrderBookDataSource(OrderBookTrackerDataSource):
 
     def _channel_originating_message(self, event_message: Dict[str, Any]) -> str:
         channel = ""
-        if "result" not in event_message:
-            event_type = event_message.get("action")
-            channel = (self._diff_messages_queue_key if event_type == CONSTANTS.DIFF_EVENT_TYPE
-                       else self._trade_messages_queue_key)
+        if "data" in event_message:
+            event_channel = event_message.get("m")
+            if event_channel == CONSTANTS.TRADE_EVENT_TYPE:
+                channel = self._trade_messages_queue_key
+            if event_channel == CONSTANTS.DIFF_EVENT_TYPE:
+                channel = self._diff_messages_queue_key
         return channel
