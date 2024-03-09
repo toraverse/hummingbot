@@ -29,12 +29,6 @@ def encode_typed_data(
 ) -> SignableMessage:
     r"""
     Encode an EIP-712_ message in a manner compatible with other implementations
-    in use, such as the Metamask and Ethers ``signTypedData`` functions.
-
-    See the `EIP-712 spec <https://eips.ethereum.org/EIPS/eip-712>`_ for more information.
-
-    You may supply the information to be encoded in one of two ways:
-
     As exactly three arguments:
 
         - ``domain_data``, a dict of the EIP-712 domain data
@@ -70,9 +64,7 @@ def encode_typed_data(
     :param message_data: data to be signed
     :param full_message: a dict containing all data and types
     :returns: a ``SignableMessage``, an encoded message ready to be signed
-
-    .. _EIP-712: https://eips.ethereum.org/EIPS/eip-712
-    """  # noqa: E501
+    """
     if full_message is not None:
         if (
             domain_data is not None
