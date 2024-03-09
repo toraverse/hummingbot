@@ -2,6 +2,8 @@ import asyncio
 import json
 from unittest import TestCase, mock
 
+from hexbytes import HexBytes
+
 from hummingbot.connector.exchange.tegro.tegro_auth import TegroAuth
 from hummingbot.core.web_assistant.connections.data_types import RESTMethod, RESTRequest
 
@@ -21,7 +23,7 @@ class TegroAuthTests(TestCase):
     def test_sign_order_params_post_request(self, mock_encode_defunct, mock_sign_message):
         # Mocking dependencies
         mock_encode_defunct.return_value = "encoded_data"
-        mock_sign_message.return_value = mock.Mock(signature={"r": 1, "s": 2, "v": 3})
+        mock_sign_message.return_value = mock.Mock(signature=HexBytes('0xc5bb16ccc59ae9a3ad1cb8343d4e3351f057c994a97656e1aff8c134e56f7530'))  # noqa: mock
 
         # Test data
         request_data = {"chainID": 80001, "WalletAddress": "testApiKey"}
@@ -38,4 +40,4 @@ class TegroAuthTests(TestCase):
         # Assertions
         mock_encode_defunct.assert_called_once_with(text="testApiKey")
         mock_sign_message.assert_called_once_with("encoded_data", private_key=self.secret_key)
-        self.assertEqual(json.loads(signed_request.data), {"signature": {"r": 1, "s": 2, "v": 3}})
+        self.assertEqual(json.loads(signed_request.data), {"signature": "0xc5bb16ccc59ae9a3ad1cb8343d4e3351f057c994a97656e1aff8c134e56f7530"})  # noqa: mock

@@ -114,7 +114,7 @@ class TegroUserStreamDataSourceUnitTests(unittest.TestCase):
 
         msg_queue = asyncio.Queue()
         try:
-            self.async_run_with_timeout(self.data_source.listen_for_user_stream(self.ev_loop, msg_queue))
+            self.async_run_with_timeout(self.data_source.listen_for_user_stream(msg_queue))
         except asyncio.exceptions.TimeoutError:
             pass
 
@@ -132,7 +132,7 @@ class TegroUserStreamDataSourceUnitTests(unittest.TestCase):
 
         msg_queue = asyncio.Queue()
 
-        self.listening_task = self.ev_loop.create_task(self.data_source.listen_for_user_stream(self.ev_loop, msg_queue))
+        self.listening_task = self.ev_loop.create_task(self.data_source.listen_for_user_stream(msg_queue))
 
         try:
             self.async_run_with_timeout(msg_queue.get())
@@ -155,7 +155,7 @@ class TegroUserStreamDataSourceUnitTests(unittest.TestCase):
         mock_ws.return_value.closed = False
         mock_ws.return_value.close.side_effect = Exception
 
-        self.listening_task = self.ev_loop.create_task(self.data_source.listen_for_user_stream(self.ev_loop, msg_queue))
+        self.listening_task = self.ev_loop.create_task(self.data_source.listen_for_user_stream(msg_queue))
 
         try:
             self.async_run_with_timeout(msg_queue.get())
@@ -176,7 +176,7 @@ class TegroUserStreamDataSourceUnitTests(unittest.TestCase):
         self.mocking_assistant.add_websocket_aiohttp_message(mock_ws.return_value, self._simulate_user_update_event())
 
         msg_queue = asyncio.Queue()
-        self.listening_task = self.ev_loop.create_task(self.data_source.listen_for_user_stream(self.ev_loop, msg_queue))
+        self.listening_task = self.ev_loop.create_task(self.data_source.listen_for_user_stream(msg_queue))
 
         msg = self.async_run_with_timeout(msg_queue.get())
         self.assertTrue(msg, self._simulate_user_update_event)
@@ -189,7 +189,7 @@ class TegroUserStreamDataSourceUnitTests(unittest.TestCase):
         self.mocking_assistant.add_websocket_aiohttp_message(mock_ws.return_value, "")
 
         msg_queue = asyncio.Queue()
-        self.listening_task = self.ev_loop.create_task(self.data_source.listen_for_user_stream(self.ev_loop, msg_queue))
+        self.listening_task = self.ev_loop.create_task(self.data_source.listen_for_user_stream(msg_queue))
 
         self.mocking_assistant.run_until_all_aiohttp_messages_delivered(mock_ws.return_value)
 

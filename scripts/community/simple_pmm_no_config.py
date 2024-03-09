@@ -21,10 +21,10 @@ class SimplePMM(ScriptStrategyBase):
     bid_spread = 0.001
     ask_spread = 0.001
     order_refresh_time = 15
-    order_amount = 0.01
+    order_amount = 3
     create_timestamp = 0
-    trading_pair = "ETH-USDT"
-    exchange = "kucoin_paper_trade"
+    trading_pair = "KRYPTONITE-USDT"
+    exchange = "tegro"
     # Here you can use for example the LastTrade price to use in your strategy
     price_source = PriceType.MidPrice
 
@@ -40,8 +40,8 @@ class SimplePMM(ScriptStrategyBase):
 
     def create_proposal(self) -> List[OrderCandidate]:
         ref_price = self.connectors[self.exchange].get_price_by_type(self.trading_pair, self.price_source)
-        buy_price = ref_price * Decimal(1 - self.bid_spread)
-        sell_price = ref_price * Decimal(1 + self.ask_spread)
+        buy_price = ref_price * Decimal(1 - self.bid_spread) / 10000
+        sell_price = ref_price * Decimal(1 + self.ask_spread) / 10000
 
         buy_order = OrderCandidate(trading_pair=self.trading_pair, is_maker=True, order_type=OrderType.LIMIT,
                                    order_side=TradeType.BUY, amount=Decimal(self.order_amount), price=buy_price)

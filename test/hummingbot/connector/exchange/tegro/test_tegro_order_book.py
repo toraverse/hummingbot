@@ -30,16 +30,16 @@ class TegroOrderBookTests(TestCase):
 
         self.assertEqual(OrderBookMessageType.SNAPSHOT, snapshot_message.type)
         self.assertEqual(1640000000, snapshot_message.timestamp)
-        self.assertEqual(1640000000, snapshot_message.update_id)
+        self.assertEqual(1708817206, snapshot_message.update_id)
         self.assertEqual(-1, snapshot_message.trade_id)
         self.assertEqual(1, len(snapshot_message.bids))
         self.assertEqual(712.0, snapshot_message.bids[0].price)
         self.assertEqual(5000.0, snapshot_message.bids[0].amount)
-        self.assertEqual(1640000000, snapshot_message.bids[0].update_id)
+        self.assertEqual(1708817206, snapshot_message.bids[0].update_id)
         self.assertEqual(1, len(snapshot_message.asks))
         self.assertEqual(6097, snapshot_message.asks[0].price)
         self.assertEqual(1600.0, snapshot_message.asks[0].amount)
-        self.assertEqual(1640000000, snapshot_message.asks[0].update_id)
+        self.assertEqual(1708817206, snapshot_message.asks[0].update_id)
 
     def test_diff_message_from_exchange(self):
         diff_msg = TegroOrderBook.diff_message_from_exchange(
