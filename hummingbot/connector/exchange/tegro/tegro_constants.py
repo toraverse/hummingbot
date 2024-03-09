@@ -12,9 +12,8 @@ USER_AGENT = "HBOT"
 MAX_ORDER_ID_LEN = 32
 
 # Base URL
-# https://api.testnet.tegro.com/v2/market/orders
+# https://api.testnet.tegro.com/v2
 
-TEGRO_URL = "https://rpc-mumbai.maticvigil.com/"
 TEGRO_BASE_URL = "https://api.testnet.tegro.com/v2/"
 TESTNET_BASE_URL = "https://api.testnet.tegro.com/v2/"
 TEGRO_WS_URL = "wss://events.testnet.tegro.com/"
@@ -34,7 +33,7 @@ SNAPSHOT_PATH_URL = "market/orderbook/depth"
 # REST API ENDPOINTS
 ACCOUNTS_PATH_URL = "wallet/balances/{}"
 MARKET_LIST_PATH_URL = "market/list"
-GENERATE_SIGN_URL = "market/orders/typedData/generate"
+GENERATE_SIGN_URL = "market/orders/typedData/generate/v2"
 TRADES_PATH_URL = "market/trades"
 TRADES_FOR_ORDER_PATH_URL = "market/orders/trades/{}"
 ORDER_PATH_URL = "market/orders"
