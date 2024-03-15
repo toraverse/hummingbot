@@ -401,7 +401,6 @@ class TegroExchange(ExchangePyBase):
             is_auth_required=False,
             limit_id=CONSTANTS.CANCEL_ORDER_URL
         )
-        print(cancel_result["message"])
         if cancel_result["message"] == "Order Cancel request is successful.":
 
             return True
@@ -594,7 +593,7 @@ class TegroExchange(ExchangePyBase):
         for order_id, trades_data in zip(order_ids, trades_results):
             if isinstance(trades_data, Exception):
                 # Handle errors appropriately
-                print(f"Error fetching trades for order ID {order_id}: {trades_data}")
+                self.logger(f"Error fetching trades for order ID {order_id}: {trades_data}")
             else:
                 for trade_data in trades_data:
                     trade_data['orderId'] = order_id
