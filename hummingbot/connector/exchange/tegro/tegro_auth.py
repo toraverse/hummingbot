@@ -1,6 +1,4 @@
 import json
-
-# import asyncio
 from collections import OrderedDict
 
 from eth_account import Account, messages
@@ -22,8 +20,8 @@ class TegroAuth(AuthBase):
         """
         Sign the provided data using the API secret key.
         """
-        message = messages.encode_defunct(text=data)
-        signed_data = Account.sign_message(message, private_key=self._api_secret)
+        wallet = Account.from_key(self._api_secret)
+        signed_data = wallet.sign_message(data)
         # Convert signature components to bytes before returning
         return signed_data.signature.hex()
 
@@ -36,8 +34,11 @@ class TegroAuth(AuthBase):
         return request  # pass-through
 
     def _sign_order_params(self, params):
+        # datas to sign
         addr = params["WalletAddress"]
-        signature = self.sign_inner(addr)
+        address = addr.lower()
+        structured_data = messages.encode_defunct(text=address)
+        signature = self.sign_inner(structured_data)
 
         payload = {
             "signature": signature,

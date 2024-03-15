@@ -1,3 +1,4 @@
+from decimal import Decimal
 from typing import Dict, Optional
 
 from hummingbot.core.data_type.common import TradeType
@@ -12,12 +13,30 @@ class TegroOrderBook(OrderBook):
                                        metadata: Optional[Dict] = None) -> OrderBookMessage:
         if metadata:
             msg.update(metadata)
+
+        trading_pair = msg.get("trading_pair", "")
+        time = msg.get("timestamp", "")
+        bids = cls.parse_entries(msg.get("Bids", []))
+        asks = cls.parse_entries(msg.get("Asks", []))
+
         return OrderBookMessage(OrderBookMessageType.SNAPSHOT, {
-            "trading_pair": msg["trading_pair"],
-            "update_id": msg["timestamp"],
-            "bids": [[float(entry['price']), entry['quantity']] for entry in msg["Bids"]],
-            "asks": [[float(entry['price']), entry['quantity']] for entry in msg["Asks"]],
+            "trading_pair": trading_pair,
+            "update_id": time,
+            "bids": bids,
+            "asks": asks,
         }, timestamp=timestamp)
+
+    @staticmethod
+    def parse_entries(entries: list) -> list:
+        parsed_entries = []
+        if entries is not None:
+            for entry in entries:
+                price = Decimal(entry.get('price', 0))
+                quantity = Decimal(entry.get('quantity', 0))
+                if price is not None and quantity is not None:
+                    parsed_entry = [float(price), float(quantity)]
+                    parsed_entries.append(parsed_entry)
+        return parsed_entries
 
     @classmethod
     def diff_message_from_exchange(cls,

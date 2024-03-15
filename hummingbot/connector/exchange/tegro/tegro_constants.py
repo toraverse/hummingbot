@@ -25,7 +25,7 @@ PUBLIC_WS_ENDPOINT = "ws"
 
 # Public API endpoints or TegroClient function
 TICKER_PRICE_CHANGE_PATH_URL = "market"
-TICKER_BOOK_PATH_URL = "market/list"
+EXCHANGE_INFO_PATH_LIST_URL = "market/list"
 EXCHANGE_INFO_PATH_URL = "market"
 PING_PATH_URL = "market/list"  # TODO
 SNAPSHOT_PATH_URL = "market/orderbook/depth"
@@ -37,9 +37,8 @@ GENERATE_SIGN_URL = "market/orders/typedData/generate/v2"
 TRADES_PATH_URL = "market/trades"
 TRADES_FOR_ORDER_PATH_URL = "market/orders/trades/{}"
 ORDER_PATH_URL = "market/orders"
-ORDDER_LIST = "market/orders/user/{}"
-USER_ORDER_PATH_URL = "market/orders/user"
-CANCEL_ORFDER_URL = "market/orders/cancel/{}"
+ORDER_LIST = "market/orders/user/{}"
+CANCEL_ORDER_URL = "market/orders/cancel"
 CANCEL_ORDER_ALL_URL = "market/orders/cancelAll"
 TEGRO_USER_ORDER_PATH_URL = "market/orders/user/{}"
 
@@ -71,6 +70,16 @@ WS_METHODS = {
     "ORDER_SUBMITTED_ONCHAIN": "order_submitted_onchain",
 }
 
+USER_METHODS = {
+    "ORDER_PLACED": "order_placed",
+    "ORDER_SUBMITTED": "order_submitted",
+    "TRADES_CREATE": "user_trade_created",
+    "TRADES_UPDATE": "user_trade_updated",
+    "ORDER_SUBMITTED_ONCHAIN": "order_submitted_onchain",
+}
+
+HEARTBEAT_TIME_INTERVAL = 30.0
+
 NO_LIMIT = sys.maxsize
 
 RATE_LIMITS = [
@@ -81,7 +90,7 @@ RATE_LIMITS = [
         time_interval=SECOND
     ),
     RateLimit(
-        limit_id=TICKER_BOOK_PATH_URL,
+        limit_id=EXCHANGE_INFO_PATH_LIST_URL,
         limit=NO_LIMIT,
         time_interval=SECOND,
         linked_limits=[LinkedLimitWeightPair(TICKER_PRICE_CHANGE_PATH_URL)]
@@ -129,7 +138,7 @@ RATE_LIMITS = [
         linked_limits=[LinkedLimitWeightPair(TICKER_PRICE_CHANGE_PATH_URL)]
     ),
     RateLimit(
-        limit_id=ORDDER_LIST,
+        limit_id=ORDER_LIST,
         limit=NO_LIMIT,
         time_interval=SECOND,
         linked_limits=[LinkedLimitWeightPair(TICKER_PRICE_CHANGE_PATH_URL)]
@@ -147,19 +156,13 @@ RATE_LIMITS = [
         linked_limits=[LinkedLimitWeightPair(TICKER_PRICE_CHANGE_PATH_URL)]
     ),
     RateLimit(
-        limit_id=USER_ORDER_PATH_URL,
-        limit=NO_LIMIT,
-        time_interval=SECOND,
-        linked_limits=[LinkedLimitWeightPair(TICKER_PRICE_CHANGE_PATH_URL)]
-    ),
-    RateLimit(
         limit_id=TRADES_FOR_ORDER_PATH_URL,
         limit=NO_LIMIT,
         time_interval=SECOND,
         linked_limits=[LinkedLimitWeightPair(TICKER_PRICE_CHANGE_PATH_URL)]
     ),
     RateLimit(
-        limit_id=CANCEL_ORFDER_URL,
+        limit_id=CANCEL_ORDER_URL,
         limit=NO_LIMIT,
         time_interval=SECOND,
         linked_limits=[LinkedLimitWeightPair(TICKER_PRICE_CHANGE_PATH_URL)]

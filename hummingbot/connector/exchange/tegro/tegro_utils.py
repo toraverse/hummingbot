@@ -58,6 +58,19 @@ def int_val_or_none(string_value: str,
             return int('0')
 
 
+def str_val_or_none(
+    string_value: str,
+    on_error_return_none: bool = True,
+) -> int:
+    try:
+        return str(string_value)
+    except Exception:
+        if on_error_return_none:
+            return None
+        else:
+            return int('0')
+
+
 def decimal_val_or_none(string_value: str,
                         on_error_return_none: bool = True,
                         ) -> Decimal:
