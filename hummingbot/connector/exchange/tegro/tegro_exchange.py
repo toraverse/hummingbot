@@ -496,12 +496,10 @@ class TegroExchange(ExchangePyBase):
             self,
             order_fill: Dict[str, Any],
             order: InFlightOrder):
-        base_currency = order_fill["symbol"].split("_")[0],
-
+        base_currency = order_fill["symbol"].split('_')[0]
         fee = TradeFeeBase.new_spot_fee(
             fee_schema=self.trade_fee_schema(),
             trade_type=order.trade_type,
-
             percent_token=base_currency,
             flat_fees=[TokenAmount(
                 amount=Decimal(0),
