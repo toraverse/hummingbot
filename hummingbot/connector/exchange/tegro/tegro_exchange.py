@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 import eth_account
 from bidict import bidict
+from eth_account import Account, messages
 
 from hummingbot.client.performance import PerformanceMetrics
 from hummingbot.connector.constants import s_decimal_NaN
@@ -16,17 +17,24 @@ from hummingbot.connector.exchange.tegro.tegro_auth import TegroAuth
 from hummingbot.connector.exchange.tegro.tegro_messages import encode_typed_data
 from hummingbot.connector.exchange_py_base import ExchangePyBase
 from hummingbot.connector.trading_rule import TradingRule
-from hummingbot.connector.utils import TradeFillOrderDetails, combine_to_hb_trading_pair
+
+# from hummingbot.connector.utils import TradeFillOrderDetails
+from hummingbot.connector.utils import combine_to_hb_trading_pair
 from hummingbot.core.data_type.common import OrderType, TradeType
 from hummingbot.core.data_type.in_flight_order import InFlightOrder, OrderUpdate, TradeUpdate
 from hummingbot.core.data_type.order_book_tracker_data_source import OrderBookTrackerDataSource
 from hummingbot.core.data_type.trade_fee import DeductedFromReturnsTradeFee, TokenAmount, TradeFeeBase
 from hummingbot.core.data_type.user_stream_tracker_data_source import UserStreamTrackerDataSource
-from hummingbot.core.event.events import MarketEvent, OrderFilledEvent
 from hummingbot.core.utils.async_utils import safe_ensure_future, safe_gather
 from hummingbot.core.utils.gateway_config_utils import SUPPORTED_CHAINS
 from hummingbot.core.web_assistant.connections.data_types import RESTMethod
 from hummingbot.core.web_assistant.web_assistants_factory import WebAssistantsFactory
+
+# from hummingbot.core.event.events import (
+#     MarketEvent,
+#     OrderFilledEvent,
+# )
+
 
 if TYPE_CHECKING:
     from hummingbot.client.config.config_helpers import ClientConfigAdapter
@@ -102,11 +110,11 @@ class TegroExchange(ExchangePyBase):
 
     @property
     def trading_rules_request_path(self):
-        return CONSTANTS.TICKER_BOOK_PATH_URL
+        return CONSTANTS.EXCHANGE_INFO_PATH_LIST_URL
 
     @property
     def trading_pairs_request_path(self):
-        return CONSTANTS.TICKER_BOOK_PATH_URL
+        return CONSTANTS.EXCHANGE_INFO_PATH_LIST_URL
 
     @property
     def check_network_request_path(self):
@@ -129,7 +137,7 @@ class TegroExchange(ExchangePyBase):
 
     async def get_all_pairs_prices(self) -> List[Dict[str, str]]:
         params = {"chain_id": CONSTANTS.CHAIN_ID, "verified": "true", "page": 1, "page_size": 20, "sort_order": "desc"}
-        pairs_prices = await self._api_get(path_url=CONSTANTS.TICKER_BOOK_PATH_URL, params=params)
+        pairs_prices = await self._api_get(path_url=CONSTANTS.EXCHANGE_INFO_PATH_LIST_URL, params=params)
 
         pairs_prices = pairs_prices["ticker"]
         for pairs_price in pairs_prices:
@@ -190,13 +198,15 @@ class TegroExchange(ExchangePyBase):
             raise
 
     async def _initialize_verified_market(self, trading_pair: str):
-        params = {"chain_id": CONSTANTS.CHAIN_ID, "market_symbol": await self.exchange_symbol_associated_to_pair(trading_pair=trading_pair)}
+        sym = trading_pair.replace('_', '-')
+        symbol = await self.exchange_symbol_associated_to_pair(trading_pair=sym)
+        params = {"chain_id": CONSTANTS.CHAIN_ID, "market_symbol": symbol}
         try:
             self._market = await self._api_request(
-                path_url=CONSTANTS.MARKET_LIST_PATH_URL,
+                path_url=CONSTANTS.EXCHANGE_INFO_PATH_URL,
                 params=params,
                 method=RESTMethod.GET,
-                limit_id=CONSTANTS.MARKET_LIST_PATH_URL,
+                limit_id=CONSTANTS.EXCHANGE_INFO_PATH_URL,
             )
         except Exception:
             self.logger().error(
@@ -337,8 +347,6 @@ class TegroExchange(ExchangePyBase):
                 is_auth_required=False,
                 limit_id=CONSTANTS.ORDER_PATH_URL,
             )
-            o_id = str(data["data"]["partial"]["id"])
-            transact_time = tegro_utils.datetime_val_or_now(data["data"]["partial"]["timestamp"], on_error_return_now=True).timestamp(),
         except IOError as e:
             error_description = str(e)
             is_server_overloaded = ("status is 503" in error_description
@@ -348,6 +356,8 @@ class TegroExchange(ExchangePyBase):
                 transact_time = int(datetime.now(timezone.utc).timestamp() * 1e3)
             else:
                 raise
+        o_id = str(data["data"]["orderId"])
+        transact_time = tegro_utils.datetime_val_or_now(data["data"]["timestamp"], on_error_return_now=True).timestamp(),
         return o_id, transact_time
 
     async def generate_typed_data(self, amount, order_type, price, trade_type, trading_pair) -> Dict[str, Any]:
@@ -374,20 +384,28 @@ class TegroExchange(ExchangePyBase):
         return data
 
     async def _place_cancel(self, order_id: str, tracked_order: InFlightOrder):
+        address = self.api_key.lower()
+        structured_data = messages.encode_defunct(text=address)
+        sign = Account.sign_message(structured_data, self.secret_key)
+        signature = sign.signature.hex()
         params = {
-            "ChainID": CONSTANTS.CHAIN_ID,
+            "id": str(tracked_order.exchange_order_id),
+            "chain_id": CONSTANTS.CHAIN_ID,
             "WalletAddress": self.api_key,
+            "signature": signature,
         }
-        if tracked_order.exchange_order_id is not None:
-            cancel_result = await self._api_delete(
-                path_url=CONSTANTS.CANCEL_ORFDER_URL.format(tracked_order.exchange_order_id),
-                data=params,
-                is_auth_required=True,
-                limit_id=CONSTANTS.CANCEL_ORFDER_URL
-            )
-            if cancel_result == "Order Cancel request is successful.":
-                return True
-            return False
+        cancel_result = await self._api_request(
+            path_url=CONSTANTS.CANCEL_ORDER_URL,
+            method=RESTMethod.POST,
+            data=params,
+            is_auth_required=False,
+            limit_id=CONSTANTS.CANCEL_ORDER_URL
+        )
+        print(cancel_result["message"])
+        if cancel_result["message"] == "Order Cancel request is successful.":
+
+            return True
+        return False
 
     async def _format_trading_rules(self, exchange_info_dict: Dict[str, Any]) -> List[TradingRule]:
         """
@@ -422,7 +440,7 @@ class TegroExchange(ExchangePyBase):
         for rule in filter(tegro_utils.is_exchange_information_valid, trading_pair_rules):
             try:
                 trading_pair = await self.trading_pair_associated_to_exchange_symbol(symbol=rule.get("Symbol"))
-                min_order_size = Decimal(2)
+                min_order_size = Decimal(1)
                 min_price_inc = PerformanceMetrics.smart_round(Decimal(str(rule["ticker"]['ask_low'])), 4)
                 min_amount_inc = Decimal(1)
                 retval.append(
@@ -435,9 +453,9 @@ class TegroExchange(ExchangePyBase):
                 self.logger().exception(f"Error parsing the trading pair rule {rule}. Skipping.")
         return retval
 
-    async def _status_polling_loop_fetch_updates(self):
-        await self._update_order_fills_from_trades()
-        await super()._status_polling_loop_fetch_updates()
+    # async def _status_polling_loop_fetch_updates(self):
+    #     await self._update_order_fills_from_trades()
+    #     await super()._status_polling_loop_fetch_updates()
 
     async def _update_trading_fees(self):
         """
@@ -450,19 +468,23 @@ class TegroExchange(ExchangePyBase):
         Listens to messages from _user_stream_tracker.user_stream queue.
         Traders, Orders, and Balance updates from the WS.
         """
-        user_channels = CONSTANTS.WS_METHODS
+        user_channels = CONSTANTS.USER_METHODS
         async for event_message in self._iter_user_event_queue():
             try:
                 channel: str = event_message.get("action", None)
-                results: Dict[str, Any] = event_message.get("d", {})
+                results: Dict[str, Any] = event_message.get("data", {})
                 if "code" not in event_message and channel not in user_channels.values():
                     self.logger().error(
                         f"Unexpected message in user stream: {event_message}.", exc_info=True)
                     continue
-                if channel == CONSTANTS.WS_METHODS["TRADES_UPDATE"]:
+                if channel == CONSTANTS.USER_METHODS["TRADES_CREATE"]:
                     self._process_trade_message(results)
-                elif channel == CONSTANTS.WS_METHODS["ORDER_SUBMITTED"]:
-                    self._process_order_message(event_message)
+                if channel == CONSTANTS.USER_METHODS["TRADES_UPDATE"]:
+                    self._process_trade_message(results)
+                elif channel == CONSTANTS.USER_METHODS["ORDER_PLACED"]:
+                    self._process_order_message(results)
+                elif channel == CONSTANTS.USER_METHODS["ORDER_SUBMITTED"]:
+                    self._process_order_message(results)
 
             except asyncio.CancelledError:
                 raise
@@ -475,37 +497,34 @@ class TegroExchange(ExchangePyBase):
             self,
             order_fill: Dict[str, Any],
             order: InFlightOrder):
-        symbol = order_fill["symbol"]
-        new_symbol = symbol.split('_')[0]
+        base_currency = order_fill["symbol"].split("_")[0],
 
         fee = TradeFeeBase.new_spot_fee(
             fee_schema=self.trade_fee_schema(),
             trade_type=order.trade_type,
-            percent_token=new_symbol,
+
+            percent_token=base_currency,
             flat_fees=[TokenAmount(
                 amount=Decimal(0),
-                token=new_symbol
+                token=base_currency,
             )]
         )
-        trade_id = str(tegro_utils.int_val_or_none(order_fill.get("id"), on_error_return_none=True))
-        if trade_id is None:
-            trade_id = "0"
-            self.logger().warning(f'W002: Received trade message with no trade_id :{order_fill}')
+
         trade_update = TradeUpdate(
-            trade_id=str(order_fill["data"]["id"]),
+            trade_id=str(order_fill["id"]),
             client_order_id=order.client_order_id,
             exchange_order_id=order.exchange_order_id,
             trading_pair=order.trading_pair,
             fee=fee,
-            fill_base_amount=Decimal(order_fill["data"]["quantity"]),
-            fill_quote_amount=Decimal(order_fill["data"]["quantity"]),
-            fill_price=Decimal(order_fill["data"]["price"]),
-            fill_timestamp=tegro_utils.datetime_val_or_now(order_fill["data"]['time'], on_error_return_now=True).timestamp(),
+            fill_base_amount=Decimal(order_fill["amount"]),
+            fill_quote_amount=Decimal(order_fill["amount"]),
+            fill_price=Decimal(order_fill["price"]),
+            fill_timestamp=tegro_utils.datetime_val_or_now(order_fill['time'], on_error_return_now=True).timestamp(),
         )
         return trade_update
 
     def _process_trade_message(self, trade: Dict[str, Any], client_order_id: Optional[str] = None):
-        client_order_id = trade["data"]["ClientOrderId"] is None and '' or str(trade["data"]["ClientOrderId"])
+        client_order_id = trade["id"] is None and '' or str(trade["id"])
         tracked_order = self._order_tracker.all_fillable_orders.get(client_order_id)
         if tracked_order is None:
             self.logger().debug(f"Ignoring trade message with id {client_order_id}: not in in_flight_orders.")
@@ -516,14 +535,14 @@ class TegroExchange(ExchangePyBase):
             self._order_tracker.process_trade_update(trade_update)
 
     def _create_order_update_with_order_status_data(self, order_status: Dict[str, Any], order: InFlightOrder):
-        formatted_time = tegro_utils.datetime_val_or_now(order_status["data"]['time'], on_error_return_now=True).timestamp()
-        client_order_id = str(order_status["data"].get("orderId", ""))
+        formatted_time = tegro_utils.datetime_val_or_now(order_status['time'], on_error_return_now=True).timestamp()
+        client_order_id = str(order_status.get("orderId", ""))
         order_update = OrderUpdate(
             trading_pair=order.trading_pair,
             update_timestamp=int(formatted_time),
-            new_state=CONSTANTS.WS_METHODS[order_status["data"]["status"]],
+            new_state=CONSTANTS.ORDER_STATE[order_status["status"]],
             client_order_id=client_order_id,
-            exchange_order_id=str(order_status["data"]["orderId"]),
+            exchange_order_id=str(order_status["orderId"]),
         )
         return order_update
 
@@ -538,145 +557,175 @@ class TegroExchange(ExchangePyBase):
         order_update = self._create_order_update_with_order_status_data(order_status=raw_msg, order=tracked_order)
         self._order_tracker.process_order_update(order_update=order_update)
 
-    async def _update_order_fills_from_trades(self):
-        """
-        This is intended to be a backup measure to get filled events with trade ID for orders,
-        in case Tegro's user stream events are not working.
-        NOTE: It is not required to copy this functionality in other connectors.
-        This is separated from _update_order_status which only updates the order status without producing filled
-        events, since Tegro's get order endpoint does not return trade IDs.
-        The minimum poll interval for order status is 10 seconds.
-        """
-        small_interval_last_tick = self._last_poll_timestamp / self.UPDATE_ORDER_STATUS_MIN_INTERVAL
-        small_interval_current_tick = self.current_timestamp / self.UPDATE_ORDER_STATUS_MIN_INTERVAL
-        long_interval_last_tick = self._last_poll_timestamp / self.LONG_POLL_INTERVAL
-        long_interval_current_tick = self.current_timestamp / self.LONG_POLL_INTERVAL
+    async def _users_orders(self, trading_pair: str):
+        await self._initialize_verified_market(trading_pair)
+        user_orders = await self._api_get(
+            path_url=CONSTANTS.ORDER_LIST.format(self.api_key),
+            params={"chain_id": CONSTANTS.CHAIN_ID,
+                    "market_id": f'{self._market["market"]["ID"]}',
+                    "statuses": "matched"},
+            limit_id=CONSTANTS.ORDER_LIST,
+            is_auth_required=False,
+            headers={"Content-Type": "application/json"}
+        )
+        return user_orders
 
-        if (long_interval_current_tick > long_interval_last_tick
-                or (self.in_flight_orders and small_interval_current_tick > small_interval_last_tick)):
-            self._last_trades_poll_tegro_timestamp = self._time_synchronizer.time()
-            order_by_exchange_id_map = {}
-            for order in self._order_tracker.all_fillable_orders.values():
-                order_by_exchange_id_map[order.exchange_order_id] = order
+    async def _user_trades(self):
+        # Gather user orders for each trading pair concurrently
+        tasks = [self._users_orders(trading_pair=trading_pair) for trading_pair in self.trading_pairs]
+        orders_results = await safe_gather(*tasks, return_exceptions=True)
 
-            tasks = []
-            trading_pairs = self.trading_pairs
-            for trading_pair in trading_pairs:
-                await self._initialize_verified_market(trading_pair=trading_pair)
-                params = {
-                    "chain_id": CONSTANTS.CHAIN_ID,
-                    "market_id": f'{self._market[0]["ID"]}',
-                }
-                tasks.append(self._api_get(
-                    path_url=CONSTANTS.ORDDER_LIST.format(self.api_key),
-                    params=params,
-                    limit_id=CONSTANTS.ORDDER_LIST,
-                    is_auth_required=False))
+        # Collect order IDs from the results
+        order_ids = []
+        for orders in orders_results:
+            for order in orders:
+                order_ids.append(str(order["orderId"]))
 
-            self.logger().debug(f"Polling for order fills of {len(tasks)} trading pairs.")
-            results = await safe_gather(*tasks, return_exceptions=True)
+        # Fetch trades for each order concurrently
+        tasks = [self._api_request(
+            method=RESTMethod.GET,
+            path_url=CONSTANTS.TRADES_FOR_ORDER_PATH_URL.format(order_id),
+            limit_id=CONSTANTS.TRADES_FOR_ORDER_PATH_URL,
+            is_auth_required=False
+        ) for order_id in order_ids]
+        trades_results = await safe_gather(*tasks, return_exceptions=True)
 
-            for trades, trading_pair in zip(results, trading_pairs):
+        # Add order ID to each trade data
+        for order_id, trades_data in zip(order_ids, trades_results):
+            if isinstance(trades_data, Exception):
+                # Handle errors appropriately
+                print(f"Error fetching trades for order ID {order_id}: {trades_data}")
+            else:
+                for trade_data in trades_data:
+                    trade_data['orderId'] = order_id
 
-                if isinstance(trades, Exception):
-                    self.logger().network(
-                        f"Error fetching trades update for the order {trading_pair}: {trades}.",
-                        app_warning_msg=f"Failed to fetch trade update for {trading_pair}."
-                    )
-                    continue
-                for trade in trades:
-                    exchange_order_id = str(trade["orderId"])
-                    if exchange_order_id in order_by_exchange_id_map:
-                        # This is a fill for a tracked order
-                        symbol = trade["symbol"]
-                        new_symbol = symbol.split('_')[0]
-                        tracked_order = order_by_exchange_id_map[exchange_order_id]
-                        fee = TradeFeeBase.new_spot_fee(
-                            fee_schema=self.trade_fee_schema(),
-                            trade_type=tracked_order.trade_type,
-                            percent_token=new_symbol,
-                            flat_fees=[TokenAmount(amount=Decimal(0), token=new_symbol)]
-                        )
+        # Organize trades data by trading pair
+        user_trades = []
+        for trades_data in trades_results:
+            user_trades.append(trades_data[0])
 
-                        trade_id = str(tegro_utils.int_val_or_none(trade.get("id"), on_error_return_none=True))
-                        if trade_id is None:
-                            trade_id = "0"
-                            self.logger().warning(f'W001: Received trade message with no trade_id :{trade}')
+        return user_trades
 
-                        trade_update = TradeUpdate(
-                            trade_id=trade_id,
-                            client_order_id=tracked_order.client_order_id,
-                            exchange_order_id=exchange_order_id,
-                            trading_pair=trading_pair,
-                            fee=fee,
-                            fill_base_amount=Decimal(trade["quantity"]),
-                            fill_quote_amount=Decimal(trade["quantity"]),
-                            fill_price=Decimal(trade["price"]),
-                            fill_timestamp=tegro_utils.datetime_val_or_now((trade['time']), on_error_return_now=True).timestamp(),
-                        )
-                        self._order_tracker.process_trade_update(trade_update)
-                    elif self.is_confirmed_new_order_filled_event(str(trade["id"]), exchange_order_id, trading_pair):
-                        # This is a fill of an order registered in the DB but not tracked any more
-                        self._current_trade_fills.add(TradeFillOrderDetails(
-                            market=self.display_name,
-                            exchange_trade_id=str(trade["id"]),
-                            symbol=trading_pair))
-                        self.trigger_event(
-                            MarketEvent.OrderFilled,
-                            OrderFilledEvent(
-                                timestamp=tegro_utils.datetime_val_or_now(trade.get('time'), on_error_return_now=True).timestamp(),
-                                order_id=self._exchange_order_ids.get(str(trade["orderId"]), None),
-                                trading_pair=trading_pair,
-                                trade_type=TradeType.BUY if trade.get("side") == "buy" else TradeType.SELL,
-                                order_type=OrderType.LIMIT,
-                                price=tegro_utils.decimal_val_or_none(trade["price"]),
-                                amount=tegro_utils.decimal_val_or_none(trade["quantity"]),
-                                trade_fee=DeductedFromReturnsTradeFee(
-                                    flat_fees=[
-                                        TokenAmount(
-                                            trade["baseCurrency"],
-                                            Decimal(0)
-                                        )
-                                    ]
-                                ),
-                                exchange_trade_id=str(tegro_utils.int_val_or_none(trade.get("id"), on_error_return_none=False)),
-                            ))
-                        self.logger().info(f"Recreating missing trade in TradeFill: {trade}")
+    # async def _update_order_fills_from_trades(self):
+    #     """
+    #     This is intended to be a backup measure to get filled events with trade ID for orders,
+    #     in case Tegro's user stream events are not working.
+    #     NOTE: It is not required to copy this functionality in other connectors.
+    #     This is separated from _update_order_status which only updates the order status without producing filled
+    #     events, since Tegro's get order endpoint does not return trade IDs.
+    #     The minimum poll interval for order status is 10 seconds.
+    #     """
+    #     small_interval_last_tick = self._last_poll_timestamp / self.UPDATE_ORDER_STATUS_MIN_INTERVAL
+    #     small_interval_current_tick = self.current_timestamp / self.UPDATE_ORDER_STATUS_MIN_INTERVAL
+    #     long_interval_last_tick = self._last_poll_timestamp / self.LONG_POLL_INTERVAL
+    #     long_interval_current_tick = self.current_timestamp / self.LONG_POLL_INTERVAL
+
+    #     if (long_interval_current_tick > long_interval_last_tick
+    #             or (self.in_flight_orders and small_interval_current_tick > small_interval_last_tick)):
+    #         self._last_trades_poll_tegro_timestamp = self._time_synchronizer.time()
+    #         order_by_exchange_id_map = {}
+    #         for order in self._order_tracker.all_fillable_orders.values():
+    #             order_by_exchange_id_map[order.exchange_order_id] = order
+
+    #         trading_pairs = self.trading_pairs
+
+    #         user_trades = await self._user_trades()
+
+    #         for trade, trading_pair in zip(user_trades, trading_pairs):
+
+    #             if isinstance(trade, Exception):
+    #                 self.logger().network(
+    #                     f"Error fetching trades update for the order {trading_pair}: {trade}.",
+    #                     app_warning_msg=f"Failed to fetch trade update for {trading_pair}."
+    #                 )
+    #                 continue
+    #             exchange_order_id = trade["orderId"]
+    #             if exchange_order_id in order_by_exchange_id_map:
+    #                 # This is a fill for a tracked order
+    #                 symbol = trade["symbol"].split('-')[0]
+    #                 tracked_order = order_by_exchange_id_map[exchange_order_id]
+    #                 fee = TradeFeeBase.new_spot_fee(
+    #                     fee_schema=self.trade_fee_schema(),
+    #                     trade_type=tracked_order.trade_type,
+    #                     percent_token=symbol,
+    #                     flat_fees=[TokenAmount(amount=Decimal(0), token=symbol)]
+    #                 )
+    #                 trade_update = TradeUpdate(
+    #                     trade_id=trade["id"],
+    #                     client_order_id=tracked_order.client_order_id,
+    #                     exchange_order_id=exchange_order_id,
+    #                     trading_pair=trading_pair,
+    #                     fee=fee,
+    #                     fill_base_amount=Decimal(trade["amount"]),
+    #                     fill_quote_amount=Decimal(trade["amount"]),
+    #                     fill_price=Decimal(trade["price"]),
+    #                     fill_timestamp=tegro_utils.datetime_val_or_now((trade['time']), on_error_return_now=True).timestamp(),
+    #                 )
+    #                 self._order_tracker.process_trade_update(trade_update)
+
+    #             elif self.is_confirmed_new_order_filled_event(str(trade["id"]), exchange_order_id, trading_pair):
+    #                 symbol = trade["symbol"].split('-')[0]
+    #                 # This is a fill of an order registered in the DB but not tracked any more
+    #                 self._current_trade_fills.add(TradeFillOrderDetails(
+    #                     market=self.display_name,
+    #                     exchange_trade_id=trade["id"],
+    #                     symbol=trading_pair))
+    #                 self.trigger_event(
+    #                     MarketEvent.OrderFilled,
+    #                     OrderFilledEvent(
+    #                         timestamp=tegro_utils.datetime_val_or_now(trade.get('time'), on_error_return_now=True).timestamp(),
+    #                         order_id=self._exchange_order_ids.get(trade["orderId"], None),
+    #                         trading_pair=trading_pair,
+    #                         trade_type=TradeType.BUY if trade.get("takerType") == "buy" else TradeType.SELL,
+    #                         order_type=OrderType.LIMIT,
+    #                         price=tegro_utils.decimal_val_or_none(trade["price"]),
+    #                         amount=tegro_utils.decimal_val_or_none(trade["amount"]),
+    #                         trade_fee=DeductedFromReturnsTradeFee(
+    #                             flat_fees=[
+    #                                 TokenAmount(
+    #                                     symbol,
+    #                                     Decimal(0)
+    #                                 )
+    #                             ]
+    #                         ),
+    #                         exchange_trade_id=str(tegro_utils.str_val_or_none(trade.get("id"), on_error_return_none=False)),
+    #                     ))
+    #                 self.logger().info(f"Recreating missing trade in TradeFill: {trade}")
 
     async def _all_trade_updates_for_order(self, order: InFlightOrder) -> List[TradeUpdate]:
         trade_updates = []
 
         if order.exchange_order_id is not None:
-            exchange_order_id = int(order.exchange_order_id)
+            exchange_order_id = str(order.exchange_order_id)
             trading_pair = await self.exchange_symbol_associated_to_pair(trading_pair=order.trading_pair)
             await self._initialize_verified_market(trading_pair=trading_pair)
-            all_fills_response = await self._api_get(
-                path_url=CONSTANTS.TRADES_FOR_ORDER_PATH_URL.format(self.api_key),
-                params={
-                    "chain_id": CONSTANTS.CHAIN_ID,
-                    "market_id": f'{self._market[0]["ID"]}',
-                },
+            all_fills_response = await self._api_request(
+                method=RESTMethod.GET,
+                path_url=CONSTANTS.TRADES_FOR_ORDER_PATH_URL.format(order.exchange_order_id),
                 is_auth_required=False,
                 limit_id=CONSTANTS.TRADES_FOR_ORDER_PATH_URL)
 
             for trade in all_fills_response:
-                timestamp = datetime.strptime(trade["time"], '%Y%m%dT%H%M%S.%fZ')
+                timestamp = datetime.strptime(trade["time"], '%Y-%m-%dT%H:%M:%S.%fZ')
                 formatted_time = timestamp.strftime('%Y%m%d')
-                exchange_order_id = str(trade["orderId"])
+
+                exchange_order_id = order.exchange_order_id
+                symbol = trade["symbol"].split('-')[0]
                 fee = TradeFeeBase.new_spot_fee(
                     fee_schema=self.trade_fee_schema(),
                     trade_type=order.trade_type,
-                    percent_token=trade["baseCurrency"],
-                    flat_fees=[TokenAmount(amount=Decimal(0), token=trade["baseCurrency"])]
+                    percent_token=symbol,
+                    flat_fees=[TokenAmount(amount=Decimal(0), token=symbol)]
                 )
+
                 trade_update = TradeUpdate(
-                    trade_id=str(trade["orderId"]),
+                    trade_id=trade["id"],
                     client_order_id=order.client_order_id,
                     exchange_order_id=exchange_order_id,
                     trading_pair=trading_pair,
                     fee=fee,
-                    fill_base_amount=Decimal(trade["quantity"]),
-                    fill_quote_amount=Decimal(trade["quantity"]),
+                    fill_base_amount=Decimal(trade["amount"]),
+                    fill_quote_amount=Decimal(trade["amount"]),
                     fill_price=Decimal(trade["price"]),
                     fill_timestamp=formatted_time,
                 )
@@ -686,22 +735,58 @@ class TegroExchange(ExchangePyBase):
 
     async def _request_order_status(self, tracked_order: InFlightOrder) -> OrderUpdate:
         await self._initialize_verified_market(trading_pair=tracked_order.trading_pair)
-        updated_order_data = await self._api_get(
-            path_url=CONSTANTS.TRADES_FOR_ORDER_PATH_URL.format(self.api_key),
-            params={
-                "chain_id": CONSTANTS.CHAIN_ID,
-                "market_id": f'{self._market[0]["ID"]}',
-            },
+
+        # Fetch the list of orders from the API
+        orders = await self._fetch_orders()
+        # Find the order with the matching exchange_order_id
+        order_data = self._find_order_by_id(orders, tracked_order.exchange_order_id)
+        # Parse the order data and construct the OrderUpdate object
+        order_update = self._parse_order_update(order_data, tracked_order)
+
+        return order_update
+
+    async def _fetch_orders(self) -> List[dict]:
+        """
+        Fetches the list of orders from the API.
+        """
+        params = {
+            "chain_id": CONSTANTS.CHAIN_ID,
+            "market_id": str(self._market["market"]["ID"])
+        }
+
+        response = await self._api_get(
+            path_url=CONSTANTS.ORDER_LIST.format(self.api_key),
+            params=params,
+            limit_id=CONSTANTS.ORDER_LIST,
             is_auth_required=False,
             headers={"Content-Type": "application/json"}
         )
+        return response
 
-        new_state = CONSTANTS.ORDER_STATE[updated_order_data["status"]]
-        timestamp = datetime.strptime(updated_order_data["time"], '%Y%m%dT%H%M%S.%fZ')
+    def _find_order_by_id(self, orders: List[dict], order_id: str) -> dict:
+        """
+        Finds the order with the specified order_id in the list of orders.
+        """
+        for order in orders:
+            if order["orderId"] == order_id:
+                return order
+
+        raise Exception(f"Order {order_id} not found in order status update response.")
+
+    def _parse_order_update(self, order_data: dict, tracked_order: InFlightOrder) -> OrderUpdate:
+        """
+        Parses the order data and constructs the OrderUpdate object.
+        """
+        if not order_data:
+            raise Exception("Order data is empty.")
+
+        new_state = CONSTANTS.ORDER_STATE.get(order_data.get("status", ""))
+        timestamp = datetime.strptime(order_data["time"], '%Y-%m-%dT%H:%M:%S.%fZ')
         formatted_time = timestamp.strftime('%Y%m%d')
+
         order_update = OrderUpdate(
             client_order_id=tracked_order.client_order_id,
-            exchange_order_id=str(updated_order_data["orderId"]),
+            exchange_order_id=str(order_data["orderId"]),
             trading_pair=tracked_order.trading_pair,
             update_timestamp=formatted_time,
             new_state=new_state,
