@@ -709,7 +709,7 @@ class TegroExchange(ExchangePyBase):
                 formatted_time = timestamp.strftime('%Y%m%d')
 
                 exchange_order_id = order.exchange_order_id
-                symbol = trade["symbol"].split('-')[0]
+                symbol = trade["symbol"].split('_')[0]
                 fee = TradeFeeBase.new_spot_fee(
                     fee_schema=self.trade_fee_schema(),
                     trade_type=order.trade_type,
