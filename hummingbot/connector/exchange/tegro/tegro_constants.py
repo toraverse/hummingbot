@@ -51,11 +51,11 @@ SIDE_BUY = "buy"
 SIDE_SELL = "sell"
 
 ORDER_STATE = {
+    "Pending": OrderState.PENDING_CREATE,
     "Active": OrderState.OPEN,
     "Matched": OrderState.FILLED,
-    "Pending": OrderState.PENDING_CREATE,
     "SoftCancelled": OrderState.PARTIALLY_FILLED,
-    "Canceled": OrderState.CANCELED,
+    "Cancelled": OrderState.CANCELED,
 }
 
 TRADE_EVENT_TYPE = "trade_updated"
