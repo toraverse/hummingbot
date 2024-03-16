@@ -603,8 +603,7 @@ class TegroExchange(ExchangePyBase):
         return order_update
 
     def _process_order_message(self, raw_msg: Dict[str, Any]):
-        order_msg = raw_msg.get("data", {})
-        client_order_id = str(order_msg.get("orderId", ""))
+        client_order_id = str(raw_msg.get("orderId", ""))
         tracked_order = self._order_tracker.all_updatable_orders.get(client_order_id)
         if not tracked_order:
             self.logger().debug(f"Ignoring order message with id {client_order_id}: not in in_flight_orders.")
@@ -732,7 +731,7 @@ class TegroExchange(ExchangePyBase):
                             timestamp=tegro_utils.datetime_val_or_now(trade.get('time'), on_error_return_now=True).timestamp(),
                             order_id=self._exchange_order_ids.get(trade["orderId"], None),
                             trading_pair=trading_pair,
-                            trade_type=TradeType.BUY if trade.get("side") == "buy" else TradeType.SELL,
+                            trade_type=TradeType.BUY if trade.get("takerType") == "buy" else TradeType.SELL,
                             order_type=OrderType.LIMIT,
                             price=tegro_utils.decimal_val_or_none(trade["price"]),
                             amount=tegro_utils.decimal_val_or_none(trade["amount"]),

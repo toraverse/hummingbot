@@ -54,7 +54,8 @@ ORDER_STATE = {
     "Pending": OrderState.PENDING_CREATE,
     "Active": OrderState.OPEN,
     "Matched": OrderState.FILLED,
-    "SoftCancelled": OrderState.PARTIALLY_FILLED,
+    "Completed": OrderState.COMPLETED,
+    "SoftCancelled": OrderState.PENDING_CANCEL,
     "Cancelled": OrderState.CANCELED,
 }
 
