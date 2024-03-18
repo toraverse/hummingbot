@@ -38,6 +38,6 @@ class TegroAuthTests(TestCase):
         signed_request = self.async_run_with_timeout(self.auth.rest_authenticate(request))
 
         # Assertions
-        mock_encode_defunct.assert_called_once_with(text="testApiKey")
+        mock_encode_defunct.assert_called_once_with(text="testapikey")
         mock_sign_message.assert_called_once_with("encoded_data", private_key=self.secret_key)
         self.assertEqual(json.loads(signed_request.data), {"signature": "0xc5bb16ccc59ae9a3ad1cb8343d4e3351f057c994a97656e1aff8c134e56f7530"})  # noqa: mock

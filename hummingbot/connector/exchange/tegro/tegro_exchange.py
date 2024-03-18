@@ -443,6 +443,7 @@ class TegroExchange(ExchangePyBase):
         return data
 
     async def _place_cancel(self, order_id: str, tracked_order: InFlightOrder):
+        # order_id = await tracked_order.get_exchange_order_id()
         address = self.api_key.lower()
         structured_data = messages.encode_defunct(text=address)
         sign = Account.sign_message(structured_data, self.secret_key)
@@ -461,7 +462,6 @@ class TegroExchange(ExchangePyBase):
             limit_id=CONSTANTS.CANCEL_ORDER_URL
         )
         if cancel_result["message"] == "Order Cancel request is successful.":
-
             return True
         return False
 
@@ -573,7 +573,7 @@ class TegroExchange(ExchangePyBase):
             trading_pair=order.trading_pair,
             fee=fee,
             fill_base_amount=Decimal(order_fill["amount"]),
-            fill_quote_amount=Decimal(order_fill["amount"]),
+            fill_quote_amount=Decimal(order_fill["amount"]) * Decimal(order_fill["price"]),
             fill_price=Decimal(order_fill["price"]),
             fill_timestamp=tegro_utils.datetime_val_or_now(order_fill['time'], on_error_return_now=True).timestamp(),
         )
@@ -712,7 +712,7 @@ class TegroExchange(ExchangePyBase):
                         trading_pair=trading_pair,
                         fee=fee,
                         fill_base_amount=Decimal(trade["amount"]),
-                        fill_quote_amount=Decimal(trade["amount"]),
+                        fill_quote_amount=Decimal(trade["amount"]) * Decimal(trade["price"]),
                         fill_price=Decimal(trade["price"]),
                         fill_timestamp=tegro_utils.datetime_val_or_now((trade['time']), on_error_return_now=True).timestamp(),
                     )
@@ -780,7 +780,7 @@ class TegroExchange(ExchangePyBase):
                     trading_pair=trading_pair,
                     fee=fee,
                     fill_base_amount=Decimal(trade["amount"]),
-                    fill_quote_amount=Decimal(trade["amount"]),
+                    fill_quote_amount=Decimal(trade["amount"]) * Decimal(trade["price"]),
                     fill_price=Decimal(trade["price"]),
                     fill_timestamp=formatted_time,
                 )
