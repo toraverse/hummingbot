@@ -30,12 +30,6 @@ from hummingbot.core.utils.gateway_config_utils import SUPPORTED_CHAINS
 from hummingbot.core.web_assistant.connections.data_types import RESTMethod
 from hummingbot.core.web_assistant.web_assistants_factory import WebAssistantsFactory
 
-# from hummingbot.core.event.events import (
-#     MarketEvent,
-#     OrderFilledEvent,
-# )
-
-
 if TYPE_CHECKING:
     from hummingbot.client.config.config_helpers import ClientConfigAdapter
 
@@ -149,6 +143,10 @@ class TegroExchange(ExchangePyBase):
         is_time_synchronizer_related = ("-1021" in error_description
                                         and "Timestamp for this request" in error_description)
         return is_time_synchronizer_related
+
+    def _is_request_result_an_error_related_to_time_synchronizer(self, request_result: Dict[str, Any]) -> bool:
+        # The exchange returns a response failure and not a valid response
+        return False
 
     def _is_order_not_found_during_status_update_error(self, status_update_exception: Exception) -> bool:
         return str(CONSTANTS.ORDER_NOT_EXIST_ERROR_CODE) in str(
@@ -312,8 +310,9 @@ class TegroExchange(ExchangePyBase):
         tracked_orders = self.in_flight_orders
         try:
             for order in tracked_orders.values():
+                exchange_order_id = await order.get_exchange_order_id()
                 self.cancel(trading_pair=order.trading_pair,
-                            client_order_id=order.exchange_order_id)
+                            client_order_id=exchange_order_id)
 
             open_orders = await self.get_open_orders()
 
@@ -448,8 +447,9 @@ class TegroExchange(ExchangePyBase):
         structured_data = messages.encode_defunct(text=address)
         sign = Account.sign_message(structured_data, self.secret_key)
         signature = sign.signature.hex()
+        ex_oid = await tracked_order.get_exchange_order_id()
         params = {
-            "id": str(tracked_order.exchange_order_id),
+            "id": ex_oid,
             "chain_id": CONSTANTS.CHAIN_ID,
             "WalletAddress": self.api_key,
             "signature": signature,
@@ -793,10 +793,11 @@ class TegroExchange(ExchangePyBase):
 
         # Fetch the list of orders from the API
         orders = await self._fetch_orders()
+        ex_oid = await tracked_order.get_exchange_order_id()
         # Find the order with the matching exchange_order_id
-        order_data = self._find_order_by_id(orders, tracked_order)
+        order_data = self._find_order_by_id(orders, ex_oid)
         # Parse the order data and construct the OrderUpdate object
-        order_update = self._parse_order_update(order_data, tracked_order)
+        order_update = await self._parse_order_update(order_data, tracked_order)
 
         return order_update
 
@@ -818,17 +819,17 @@ class TegroExchange(ExchangePyBase):
         )
         return response
 
-    def _find_order_by_id(self, orders: List[dict], tracked_order: InFlightOrder) -> dict:
+    def _find_order_by_id(self, orders: List[dict], ex_oid) -> dict:
         """
         Finds the order with the specified order_id in the list of orders.
         """
         for order in orders:
-            if order["orderId"] == tracked_order.exchange_order_id:
+            if order["orderId"] == ex_oid:
                 return order
 
-        raise Exception(f"Order {tracked_order.exchange_order_id} not found in order status update response.")
+        raise Exception(f"Order {ex_oid} not found in order status update response.")
 
-    def _parse_order_update(self, order_data: dict, tracked_order: InFlightOrder) -> OrderUpdate:
+    async def _parse_order_update(self, order_data: dict, tracked_order: InFlightOrder) -> OrderUpdate:
         """
         Parses the order data and constructs the OrderUpdate object.
         """
