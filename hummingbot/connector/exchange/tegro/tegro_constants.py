@@ -5,6 +5,7 @@ from hummingbot.core.api_throttler.data_types import LinkedLimitWeightPair, Rate
 from hummingbot.core.data_type.in_flight_order import OrderState
 
 EXCHANGE_NAME = "tegro"
+DEFAULT_DOMAIN = "tegro"
 
 DOMAIN = EXCHANGE_NAME
 HBOT_ORDER_ID_PREFIX = "HB"
@@ -19,24 +20,44 @@ TESTNET_BASE_URL = "https://api.testnet.tegro.com/v2/"
 TEGRO_WS_URL = "wss://events.testnet.tegro.com/"
 TESTNET_WS_URL = "wss://events.testnet.tegro.com/"
 
+MAINNET_NEW_URL = "https://exchange.testnet.tegro.com/api/v1/"
+TESTNET_NEW_URL = "https://exchange.testnet.tegro.com/api/v1/"
+
+MAINNET_ACC_URL = "https://accounts.testnet.tegro.com/api/v1/"
+TESTNET_ACC_URL = "https://accounts.testnet.tegro.com/api/v1/"
+
 CHAIN_ID = 80001
+
+MAINNET_CHAIN_IDS = {
+    "polygon": 80001,
+    "arbitrum": 42161,
+    "optimism": 11155420,
+}
+
+TESTNET_CHAIN_IDS = {
+    "polygon": 80001,
+    "arbitrum": 42161,
+    "optimism": 11155420,
+}
 
 PUBLIC_WS_ENDPOINT = "ws"
 
 # Public API endpoints or TegroClient function
-TICKER_PRICE_CHANGE_PATH_URL = "market"
-EXCHANGE_INFO_PATH_LIST_URL = "market/list"
-EXCHANGE_INFO_PATH_URL = "market"
-PING_PATH_URL = "market/list"  # TODO
+TICKER_PRICE_CHANGE_PATH_URL = "{}/market/{}"
+EXCHANGE_INFO_PATH_LIST_URL = "{}/market/list"
+EXCHANGE_INFO_PATH_URL = "{}/market/{}"
+PING_PATH_URL = "{}/market/list"  # TODO
 SNAPSHOT_PATH_URL = "market/orderbook/depth"
 
 # REST API ENDPOINTS
-ACCOUNTS_PATH_URL = "wallet/balances/{}"
-MARKET_LIST_PATH_URL = "market/list"
+ACCOUNTS_PATH_URL = "{}/{}/portfolio"
+MARKET_LIST_PATH_URL = "{}/market/list"
 GENERATE_SIGN_URL = "market/orders/typedData/generate/v2"
-TRADES_PATH_URL = "market/trades"
+TRADES_PATH_URL = "{}/market/trades"
 TRADES_FOR_ORDER_PATH_URL = "market/orders/trades/{}"
 ORDER_PATH_URL = "market/orders"
+CHAIN_LIST = "chain/list"
+CHARTS_TRADES = "{}/market/chart"
 ORDER_LIST = "market/orders/user/{}"
 CANCEL_ORDER_URL = "market/orders/cancel"
 CANCEL_ORDER_ALL_URL = "market/orders/cancelAll"
@@ -45,13 +66,14 @@ TEGRO_USER_ORDER_PATH_URL = "market/orders/user/{}"
 
 WS_HEARTBEAT_TIME_INTERVAL = 30
 
-# Tegro params
+API_LIMIT_REACHED_ERROR_MESSAGE = "TOO MANY REQUESTS"
 
+# Tegro params
 SIDE_BUY = "buy"
 SIDE_SELL = "sell"
 
 ORDER_STATE = {
-    "Pending": OrderState.PENDING_CREATE,
+    "Pending": OrderState.PARTIALLY_FILLED,
     "Active": OrderState.OPEN,
     "Matched": OrderState.FILLED,
     "Completed": OrderState.COMPLETED,
@@ -135,6 +157,18 @@ RATE_LIMITS = [
     ),
     RateLimit(
         limit_id=ORDER_PATH_URL,
+        limit=NO_LIMIT,
+        time_interval=SECOND,
+        linked_limits=[LinkedLimitWeightPair(TICKER_PRICE_CHANGE_PATH_URL)]
+    ),
+    RateLimit(
+        limit_id=CHAIN_LIST,
+        limit=NO_LIMIT,
+        time_interval=SECOND,
+        linked_limits=[LinkedLimitWeightPair(TICKER_PRICE_CHANGE_PATH_URL)]
+    ),
+    RateLimit(
+        limit_id=CHARTS_TRADES,
         limit=NO_LIMIT,
         time_interval=SECOND,
         linked_limits=[LinkedLimitWeightPair(TICKER_PRICE_CHANGE_PATH_URL)]

@@ -56,7 +56,7 @@ class TegroAPIOrderBookDataSource(OrderBookTrackerDataSource):
         """
 
         params = {
-            "chain_id": CONSTANTS.CHAIN_ID,
+            "chain_id": self._connector.chain,
             "market_symbol": await self._connector.exchange_symbol_associated_to_pair(trading_pair=trading_pair),
         }
 
@@ -96,14 +96,13 @@ class TegroAPIOrderBookDataSource(OrderBookTrackerDataSource):
             raise
 
     async def _fetch_market_data(self):
-        params = {"chain_id": CONSTANTS.CHAIN_ID, "verified": "true", "page": 1, "page_size": 20, "sort_order": "desc"}
-        rest_assistant = await self._api_factory.get_rest_assistant()
         try:
-            return await rest_assistant.execute_request(
-                url=tegro_web_utils.public_rest_url(CONSTANTS.MARKET_LIST_PATH_URL, domain=self._domain),
-                params=params,
-                method=RESTMethod.GET,
-                throttler_limit_id=CONSTANTS.MARKET_LIST_PATH_URL,
+            return await self._connector._api_requests(
+                path_url = CONSTANTS.MARKET_LIST_PATH_URL.format(self._connector.chain),
+                method="GET",
+                limit_id=CONSTANTS.MARKET_LIST_PATH_URL,
+                new_url = True,
+                is_auth_required=False
             )
         except Exception:
             self.logger().error(
@@ -113,12 +112,12 @@ class TegroAPIOrderBookDataSource(OrderBookTrackerDataSource):
 
     def _process_market_data(self, market_data):
         param = []
-        for market in market_data:
-            s = market["Symbol"]
+        for market in market_data["data"]:
+            s = market["symbol"]
             symb = s.split("_")
             new_symbol = f"{symb[0]}-{symb[1]}"
             if new_symbol in self._trading_pairs:
-                address = str(market["BaseContractAddress"])
+                address = str(market["base_contract_address"])
                 param.append(f"{CONSTANTS.CHAIN_ID}/{address}")
         return param[0]
 

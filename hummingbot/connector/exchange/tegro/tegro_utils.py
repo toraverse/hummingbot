@@ -1,10 +1,11 @@
 import time
 from datetime import datetime
 from decimal import Decimal
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from dateutil.parser import parse as dateparse
 from pydantic import Field, SecretStr
+from pydantic.class_validators import validator
 
 from hummingbot.client.config.config_data_types import BaseConnectorConfigMap, ClientFieldData
 from hummingbot.connector.exchange.tegro import tegro_constants as CONSTANTS
@@ -19,6 +20,24 @@ DEFAULT_FEES = TradeFeeSchema(
     maker_percent_fee_decimal=Decimal("0"),
     taker_percent_fee_decimal=Decimal("0"),
 )
+
+
+def validate_mainnet_exchange(value: str) -> Optional[str]:
+    """
+    Permissively interpret a string as a boolean
+    """
+    valid_values = ('optimism', 'polygon', 'arbitrum')
+    if value.lower() not in valid_values:
+        return f"Invalid value, please choose value from {valid_values}"
+
+
+def validate_testnet_exchange(value: str) -> Optional[str]:
+    """
+    Permissively interpret a string as a boolean
+    """
+    valid_values = ('optimism', 'polygon')
+    if value.lower() not in valid_values:
+        return f"Invalid value, please choose value from {valid_values}"
 
 
 def get_client_order_id(is_buy: bool) -> str:
@@ -39,7 +58,7 @@ def is_exchange_information_valid(exchange_info: Dict[str, Any]) -> bool:
     :return: True if the trading pair is enabled, False otherwise
     """
 
-    return exchange_info.get("State", None) == "verified"
+    return exchange_info.get("state", None) == "verified"
 
 
 def get_ms_timestamp() -> int:
@@ -120,6 +139,24 @@ class TegroConfigMap(BaseConnectorConfigMap):
             prompt_on_new=True,
         )
     )
+    chain: str = Field(
+        default=...,
+        client_data=ClientFieldData(
+            prompt=lambda cm: "Enter your preferred network.(polygon/optimism/arbitrum)",
+            is_secure=False,
+            is_connect_key=True,
+            prompt_on_new=True,
+        )
+    )
+
+    @validator("chain", pre=True)
+    def validate_exchange(cls, v: str):
+        """Used for client-friendly error output."""
+        if isinstance(v, str):
+            ret = validate_mainnet_exchange(v)
+            if ret is not None:
+                raise ValueError(ret)
+        return v
 
     class Config:
         title = "tegro"
@@ -153,6 +190,24 @@ class TegroTestnetConfigMap(BaseConnectorConfigMap):
             prompt_on_new=True,
         )
     )
+    chain: str = Field(
+        default=...,
+        client_data=ClientFieldData(
+            prompt=lambda cm: "Enter your preferred chain (polygon/optimism)",
+            is_secure=False,
+            is_connect_key=True,
+            prompt_on_new=True,
+        )
+    )
+
+    @validator("chain", pre=True)
+    def validate_exchange(cls, v: str):
+        """Used for client-friendly error output."""
+        if isinstance(v, str):
+            ret = validate_testnet_exchange(v)
+            if ret is not None:
+                raise ValueError(ret)
+        return v
 
     class Config:
         title = "tegro_testnet"

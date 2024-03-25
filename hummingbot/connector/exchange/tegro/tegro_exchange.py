@@ -2,12 +2,15 @@ import asyncio
 import math
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
+import aiohttp
 import eth_account
+import ujson
 from bidict import bidict
 from eth_account import Account, messages
 
+# from hummingbot.client.performance import PerformanceMetrics
 from hummingbot.client.performance import PerformanceMetrics
 from hummingbot.connector.constants import s_decimal_NaN
 from hummingbot.connector.exchange.tegro import tegro_constants as CONSTANTS, tegro_utils, tegro_web_utils as web_utils
@@ -26,6 +29,7 @@ from hummingbot.core.data_type.trade_fee import DeductedFromReturnsTradeFee, Tok
 from hummingbot.core.data_type.user_stream_tracker_data_source import UserStreamTrackerDataSource
 from hummingbot.core.event.events import MarketEvent, OrderCancelledEvent, OrderFilledEvent
 from hummingbot.core.utils.async_utils import safe_ensure_future, safe_gather
+from hummingbot.core.utils.estimate_fee import build_trade_fee
 from hummingbot.core.utils.gateway_config_utils import SUPPORTED_CHAINS
 from hummingbot.core.web_assistant.connections.data_types import RESTMethod
 from hummingbot.core.web_assistant.web_assistants_factory import WebAssistantsFactory
@@ -49,14 +53,17 @@ class TegroExchange(ExchangePyBase):
                  client_config_map: "ClientConfigAdapter",
                  tegro_api_key: str,
                  tegro_api_secret: str,
+                 chain: str,
                  trading_pairs: Optional[List[str]] = None,
                  trading_required: bool = True,
-                 domain: str = CONSTANTS.DOMAIN
+                 domain: str = CONSTANTS.DEFAULT_DOMAIN
                  ):
         self.api_key = tegro_api_key
         self.secret_key = tegro_api_secret
+        self.chain_id = chain
         self._api_factory = WebAssistantsFactory
         self._domain = domain
+        self._shared_client = aiohttp.ClientSession()
         self._trading_required = trading_required
         self._trading_pairs = trading_pairs
         self._last_trades_poll_tegro_timestamp = 1.0
@@ -75,12 +82,13 @@ class TegroExchange(ExchangePyBase):
     def authenticator(self):
         return TegroAuth(
             api_key=self.api_key,
-            api_secret=self.secret_key
+            api_secret=self.secret_key,
+            chain_id=self.chain_id
         )
 
     @property
     def name(self) -> str:
-        return CONSTANTS.EXCHANGE_NAME
+        return self._domain
 
     @property
     def rate_limits_rules(self):
@@ -97,6 +105,16 @@ class TegroExchange(ExchangePyBase):
     @property
     def client_order_id_max_length(self):
         return CONSTANTS.MAX_ORDER_ID_LEN
+
+    @property
+    def chain(self):
+        if self.chain_id is None:
+            chain = CONSTANTS.CHAIN_ID
+        elif self.domain == "tegro":
+            chain = CONSTANTS.MAINNET_CHAIN_IDS[self.chain_id]
+        else:
+            chain = CONSTANTS.TESTNET_CHAIN_IDS[self.chain_id]
+        return chain
 
     @property
     def client_order_id_prefix(self):
@@ -130,13 +148,22 @@ class TegroExchange(ExchangePyBase):
         return [OrderType.LIMIT, OrderType.LIMIT_MAKER]
 
     async def get_all_pairs_prices(self) -> List[Dict[str, str]]:
-        params = {"chain_id": CONSTANTS.CHAIN_ID, "verified": "true", "page": 1, "page_size": 20, "sort_order": "desc"}
-        pairs_prices = await self._api_get(path_url=CONSTANTS.EXCHANGE_INFO_PATH_LIST_URL, params=params)
+        results = {}
+        data = await self._api_requests(
+            method="GET",
+            path_url=CONSTANTS.EXCHANGE_INFO_PATH_LIST_URL.format(self.chain),
+            limit_id=CONSTANTS.EXCHANGE_INFO_PATH_LIST_URL,
+            is_auth_required=False,
+            new_url = True,
+        )
 
-        pairs_prices = pairs_prices["ticker"]
-        for pairs_price in pairs_prices:
-            price = pairs_price["price"]
-        return price
+        pairs_prices = data["data"]
+        for pair_price_data in pairs_prices[0]:
+            results[pair_price_data["symbol"]] = {
+                "best_bid": pair_price_data["ticker"]["bid_high"],
+                "best_ask": pair_price_data["ticker"]["ask_low"],
+            }
+        return results
 
     def _is_request_exception_related_to_time_synchronizer(self, request_exception: Exception):
         error_description = str(request_exception)
@@ -180,38 +207,6 @@ class TegroExchange(ExchangePyBase):
             api_factory=self._web_assistants_factory,
         )
 
-    async def _initialize_market_list(self):
-        params = {"chain_id": CONSTANTS.CHAIN_ID, "verified": "true", "page": 1, "page_size": 20, "sort_order": "desc"}
-        try:
-            self._markets = await self._api_request(
-                path_url=CONSTANTS.MARKET_LIST_PATH_URL,
-                params=params,
-                method=RESTMethod.GET,
-                limit_id=CONSTANTS.MARKET_LIST_PATH_URL,
-            )
-        except Exception:
-            self.logger().error(
-                "Unexpected error occurred fetching market data...", exc_info=True
-            )
-            raise
-
-    async def _initialize_verified_market(self, trading_pair: str):
-        sym = trading_pair.replace('_', '-')
-        symbol = await self.exchange_symbol_associated_to_pair(trading_pair=sym)
-        params = {"chain_id": CONSTANTS.CHAIN_ID, "market_symbol": symbol}
-        try:
-            self._market = await self._api_request(
-                path_url=CONSTANTS.EXCHANGE_INFO_PATH_URL,
-                params=params,
-                method=RESTMethod.GET,
-                limit_id=CONSTANTS.EXCHANGE_INFO_PATH_URL,
-            )
-        except Exception:
-            self.logger().error(
-                "Unexpected error occurred fetching market data...", exc_info=True
-            )
-            raise
-
     def _get_fee(self,
                  base_currency: str,
                  quote_currency: str,
@@ -220,8 +215,18 @@ class TegroExchange(ExchangePyBase):
                  amount: Decimal,
                  price: Decimal = s_decimal_NaN,
                  is_maker: Optional[bool] = None) -> TradeFeeBase:
-        is_maker = order_type is OrderType.LIMIT_MAKER
-        return DeductedFromReturnsTradeFee(percent=self.estimate_fee_pct(is_maker))
+        is_maker = is_maker or False
+        fee = build_trade_fee(
+            self.name,
+            is_maker,
+            base_currency=base_currency,
+            quote_currency=quote_currency,
+            order_type=order_type,
+            order_side=order_side,
+            amount=amount,
+            price=price,
+        )
+        return fee
 
     def buy(self,
             trading_pair: str,
@@ -273,29 +278,148 @@ class TegroExchange(ExchangePyBase):
             price=price))
         return order_id
 
-    async def get_open_orders(self) -> List[OpenOrder]:
-        query_params = {
-            "chain_id": CONSTANTS.CHAIN_ID,
-            "statuses": "active"
-        }
-        open_orders: List[Dict[str, Any]] = await self._api_request(method=RESTMethod.GET,
-                                                                    path_url=CONSTANTS.ORDER_LIST.format(self.api_key),
-                                                                    params=query_params,
-                                                                    limit_id=CONSTANTS.ORDER_LIST,
-                                                                    is_auth_required=False)
+    async def _place_order(self,
+                           order_id: str,
+                           trading_pair: str,
+                           amount: Decimal,
+                           trade_type: TradeType,
+                           order_type: OrderType,
+                           price: Decimal,
+                           **kwargs) -> Tuple[str, float]:
+        transaction_data = await self.generate_typed_data(amount, order_type, price, trade_type, trading_pair)
+        pr = int(transaction_data["data"]["sign_data"]["message"]["price"])
+        vc = transaction_data["data"]["sign_data"]["domain"]["verifyingContract"]
+        am = int(transaction_data["data"]["sign_data"]["message"]["totalQuantity"])
+        isb = transaction_data["data"]["sign_data"]["message"]["isBuy"]
+        sa = int(transaction_data["data"]["sign_data"]["message"]["salt"])
+        bt = transaction_data["data"]["sign_data"]["message"]["baseToken"]
+        qt = transaction_data["data"]["sign_data"]["message"]["quoteToken"]
+        ma = transaction_data["data"]["sign_data"]["message"]["maker"]
+        s = await self.exchange_symbol_associated_to_pair(trading_pair=trading_pair)
+        symbol: str = s.replace('-', '_')
 
-        return [OpenOrder(client_order_id=order["orderId"],
-                          trading_pair=[f'{order["baseCurrency"]}_{order["quoteCurrency"]}'],
-                          price=Decimal(str(order["price"])),
-                          amount=Decimal(str(order["quantity"])),
-                          executed_amount=Decimal(str(order["quantity"])),
-                          status=order["status"],
-                          order_type=OrderType.LIMIT,
-                          is_buy=True if order["side"] == "Buy" else False,
-                          time=tegro_utils.datetime_val_or_now(order.get('time'), on_error_return_now=True).timestamp(),
-                          exchange_order_id=order["orderId"],
-                          )
-                for order in open_orders]
+        # datas to sign
+        domain_data = {
+            "name": "TegroDEX",
+            "version": "1",
+            "chainId": self.chain,
+            "verifyingContract": vc,
+        }
+        message_data = {
+            "baseToken": bt,
+            "isBuy": isb,
+            "maker": ma,
+            "price": pr,
+            "quoteToken": qt,
+            "salt": sa,
+            "totalQuantity": am,
+        }
+        message_types = {
+            "Order": [
+                {"name": "baseToken", "type": "address"},
+                {"name": "quoteToken", "type": "address"},
+                {"name": "price", "type": "uint256"},
+                {"name": "totalQuantity", "type": "uint256"},
+                {"name": "isBuy", "type": "bool"},
+                {"name": "salt", "type": "uint256"},
+                {"name": "maker", "type": "address"},
+            ],
+        }
+
+        # encode and sign
+        structured_data = encode_typed_data(domain_data, message_types, message_data)
+        signed = self.wallet.sign_message(structured_data)
+        signature = signed.signature.hex()
+
+        api_params = {
+            "chain_id": self.chain,
+            "side": transaction_data["data"]["limit_order"]["side"],
+            "volume_precision": transaction_data["data"]["limit_order"]["volume_precision"],
+            "price_precision": transaction_data["data"]["limit_order"]["price_precision"],
+            "order_hash": transaction_data["data"]["limit_order"]["order_hash"],
+            "raw_order_data": transaction_data["data"]["limit_order"]["raw_order_data"],
+            "signature": signature,
+            "signed_order_type": "tegro",
+            "market_id": transaction_data["data"]["limit_order"]["market_id"],
+            "market_symbol": symbol,
+        }
+        try:
+            data = await self._api_request(
+                path_url=CONSTANTS.ORDER_PATH_URL,
+                method=RESTMethod.POST,
+                data=api_params,
+                is_auth_required=False,
+                limit_id=CONSTANTS.ORDER_PATH_URL,
+            )
+        except IOError as e:
+            error_description = str(e)
+            is_server_overloaded = ("status is 503" in error_description
+                                    and "Unknown error, please check your request or try again later." in error_description)
+            if is_server_overloaded:
+                o_id = "Unknown"
+                transact_time = int(datetime.now(timezone.utc).timestamp() * 1e3)
+            else:
+                raise
+        o_id = str(data["data"]["orderId"])
+        transact_time = tegro_utils.datetime_val_or_now(data["data"]["timestamp"], on_error_return_now=True).timestamp(),
+        return o_id, transact_time
+
+    async def generate_typed_data(self, amount, order_type, price, trade_type, trading_pair) -> Dict[str, Any]:
+        side_str = CONSTANTS.SIDE_BUY if trade_type is TradeType.BUY else CONSTANTS.SIDE_SELL
+        params = {
+            "chain_id": self.chain,
+            "market_symbol": await self.exchange_symbol_associated_to_pair(trading_pair=trading_pair),
+            "side": side_str,
+            "wallet_address": self.api_key,
+            "amount": math.floor(amount),
+        }
+        if order_type is OrderType.LIMIT or order_type is OrderType.LIMIT_MAKER:
+            price_str = math.floor(price)
+            params["price"] = price_str
+        data = await self._api_request(
+            path_url=CONSTANTS.GENERATE_SIGN_URL,
+            method=RESTMethod.POST,
+            data=params,
+            is_auth_required=False,
+            limit_id=CONSTANTS.GENERATE_SIGN_URL,
+        )
+        if data["message"] != "success":
+            raise IOError(f"Error submitting order {data}")
+        return data
+
+    async def _place_cancel(self, order_id: str, tracked_order: InFlightOrder):
+        # order_id = await tracked_order.get_exchange_order_id()
+        address = self.api_key.lower()
+        structured_data = messages.encode_defunct(text=address)
+        sign = Account.sign_message(structured_data, self.secret_key)
+        signature = sign.signature.hex()
+        ex_oid = await tracked_order.get_exchange_order_id()
+        params = {
+            "chain_id": self.chain,
+            "id": ex_oid,
+            "signature": signature,
+        }
+        try:
+            cancel_result = await self._api_request(
+                path_url=CONSTANTS.CANCEL_ORDER_URL,
+                method=RESTMethod.POST,
+                data=params,
+                is_auth_required=False,
+                limit_id=CONSTANTS.CANCEL_ORDER_URL)
+        except IOError as e:
+            error_description = str(e)
+            is_not_active = ("status is 400" in error_description
+                             and "Order is not active" in error_description)
+            if is_not_active:
+                self.logger().debug(f"The order {order_id} does not exist on tegro."
+                                    f"No cancelation needed.")
+
+                await self._order_tracker.process_order_not_found(order_id)
+            else:
+                raise
+        if cancel_result.get("message") == "Order Cancel request is successful.":
+            return True
+        return False
 
     async def cancel_all(self, timeout_sec: float) -> List[CancellationResult]:
         """
@@ -333,137 +457,29 @@ class TegroExchange(ExchangePyBase):
             )
         return cancellation_results
 
-    async def _place_order(self,
-                           order_id: str,
-                           trading_pair: str,
-                           amount: Decimal,
-                           trade_type: TradeType,
-                           order_type: OrderType,
-                           price,
-                           **kwargs) -> Tuple[str, float]:
-        transaction_data = await self.generate_typed_data(amount, order_type, price, trade_type, trading_pair)
-        pr = int(transaction_data["data"]["sign_data"]["message"]["price"])
-        am = int(transaction_data["data"]["sign_data"]["message"]["totalQuantity"])
-        isb = transaction_data["data"]["sign_data"]["message"]["isBuy"]
-        sa = int(transaction_data["data"]["sign_data"]["message"]["salt"])
-        bt = transaction_data["data"]["sign_data"]["message"]["baseToken"]
-        qt = transaction_data["data"]["sign_data"]["message"]["quoteToken"]
-        ma = transaction_data["data"]["sign_data"]["message"]["maker"]
-        s = await self.exchange_symbol_associated_to_pair(trading_pair=trading_pair)
-        symbol: str = s.replace('-', '_')
+    async def get_open_orders(self) -> List[OpenOrder]:
+        query_params = {
+            "chain_id": self.chain,
+            "statuses": "active"
+        }
+        open_orders: List[Dict[str, Any]] = await self._api_request(method=RESTMethod.GET,
+                                                                    path_url=CONSTANTS.ORDER_LIST.format(self.api_key),
+                                                                    params=query_params,
+                                                                    limit_id=CONSTANTS.ORDER_LIST,
+                                                                    is_auth_required=False)
 
-        # datas to sign
-        domain_data = {
-            "name": "TegroDEX",
-            "version": "1",
-            "chainId": 80001,
-            "verifyingContract": "0xb546E4a749e71Ef8F64D8686a21FF3960BF3Bb0B",
-        }
-        message_data = {
-            "baseToken": bt,
-            "isBuy": isb,
-            "maker": ma,
-            "price": pr,
-            "quoteToken": qt,
-            "salt": sa,
-            "totalQuantity": am,
-        }
-        message_types = {
-            "Order": [
-                {"name": "baseToken", "type": "address"},
-                {"name": "quoteToken", "type": "address"},
-                {"name": "price", "type": "uint256"},
-                {"name": "totalQuantity", "type": "uint256"},
-                {"name": "isBuy", "type": "bool"},
-                {"name": "salt", "type": "uint256"},
-                {"name": "maker", "type": "address"},
-            ],
-        }
-
-        # encode and sign
-        structured_data = encode_typed_data(domain_data, message_types, message_data)
-        signed = self.wallet.sign_message(structured_data)
-        signature = signed.signature.hex()
-
-        api_params = {
-            "chain_id": 80001,
-            "side": transaction_data["data"]["limit_order"]["side"],
-            "volume_precision": transaction_data["data"]["limit_order"]["volume_precision"],
-            "price_precision": transaction_data["data"]["limit_order"]["price_precision"],
-            "order_hash": transaction_data["data"]["limit_order"]["order_hash"],
-            "raw_order_data": transaction_data["data"]["limit_order"]["raw_order_data"],
-            "signature": signature,
-            "signed_order_type": "tegro",
-            "market_id": transaction_data["data"]["limit_order"]["market_id"],
-            "market_symbol": symbol,
-        }
-        try:
-            data = await self._api_request(
-                path_url=CONSTANTS.ORDER_PATH_URL,
-                method=RESTMethod.POST,
-                data=api_params,
-                is_auth_required=False,
-                limit_id=CONSTANTS.ORDER_PATH_URL,
-            )
-        except IOError as e:
-            error_description = str(e)
-            is_server_overloaded = ("status is 503" in error_description
-                                    and "Unknown error, please check your request or try again later." in error_description)
-            if is_server_overloaded:
-                o_id = "Unknown"
-                transact_time = int(datetime.now(timezone.utc).timestamp() * 1e3)
-            else:
-                raise
-        o_id = str(data["data"]["orderId"])
-        transact_time = tegro_utils.datetime_val_or_now(data["data"]["timestamp"], on_error_return_now=True).timestamp(),
-        return o_id, transact_time
-
-    async def generate_typed_data(self, amount, order_type, price, trade_type, trading_pair) -> Dict[str, Any]:
-        side_str = CONSTANTS.SIDE_BUY if trade_type is TradeType.BUY else CONSTANTS.SIDE_SELL
-        params = {
-            "chain_id": CONSTANTS.CHAIN_ID,
-            "market_symbol": await self.exchange_symbol_associated_to_pair(trading_pair=trading_pair),
-            "side": side_str,
-            "wallet_address": self.api_key,
-            "amount": math.floor(amount),
-        }
-        if order_type is OrderType.LIMIT or order_type is OrderType.LIMIT_MAKER:
-            price_str = math.floor(price)
-            params["price"] = price_str
-        data = await self._api_request(
-            path_url=CONSTANTS.GENERATE_SIGN_URL,
-            method=RESTMethod.POST,
-            data=params,
-            is_auth_required=False,
-            limit_id=CONSTANTS.GENERATE_SIGN_URL,
-        )
-        if data["message"] != "success":
-            raise IOError(f"Error submitting order {data}")
-        return data
-
-    async def _place_cancel(self, order_id: str, tracked_order: InFlightOrder):
-        # order_id = await tracked_order.get_exchange_order_id()
-        address = self.api_key.lower()
-        structured_data = messages.encode_defunct(text=address)
-        sign = Account.sign_message(structured_data, self.secret_key)
-        signature = sign.signature.hex()
-        ex_oid = await tracked_order.get_exchange_order_id()
-        params = {
-            "id": ex_oid,
-            "chain_id": CONSTANTS.CHAIN_ID,
-            "WalletAddress": self.api_key,
-            "signature": signature,
-        }
-        cancel_result = await self._api_request(
-            path_url=CONSTANTS.CANCEL_ORDER_URL,
-            method=RESTMethod.POST,
-            data=params,
-            is_auth_required=False,
-            limit_id=CONSTANTS.CANCEL_ORDER_URL
-        )
-        if cancel_result["message"] == "Order Cancel request is successful.":
-            return True
-        return False
+        return [OpenOrder(client_order_id=order["orderId"],
+                          trading_pair=[f'{order["baseCurrency"]}_{order["quoteCurrency"]}'],
+                          price=Decimal(str(order["price"])),
+                          amount=Decimal(str(order["quantity"])),
+                          executed_amount=Decimal(str(order["quantity"])),
+                          status=order["status"],
+                          order_type=OrderType.LIMIT,
+                          is_buy=True if order["side"] == "Buy" else False,
+                          time=tegro_utils.datetime_val_or_now(order.get('time'), on_error_return_now=True).timestamp(),
+                          exchange_order_id=order["orderId"],
+                          )
+                for order in open_orders]
 
     async def _format_trading_rules(self, exchange_info_dict: Dict[str, Any]) -> List[TradingRule]:
         """
@@ -497,14 +513,14 @@ class TegroExchange(ExchangePyBase):
         retval = []
         for rule in filter(tegro_utils.is_exchange_information_valid, trading_pair_rules):
             try:
-                trading_pair = await self.trading_pair_associated_to_exchange_symbol(symbol=rule.get("Symbol"))
-                min_order_size = Decimal(1)
-                min_price_inc = PerformanceMetrics.smart_round(Decimal(str(rule["ticker"]['ask_low'])), 4)
+                trading_pair = await self.trading_pair_associated_to_exchange_symbol(symbol=rule.get("symbol"))
+                min_order_size = Decimal(0.1)
+                # min_price_inc = PerformanceMetrics.smart_round(Decimal(str(rule["ticker"]['price_low_24h'])), 4)
                 min_amount_inc = Decimal(1)
                 retval.append(
                     TradingRule(trading_pair,
                                 min_order_size=min_order_size,
-                                min_price_increment=min_price_inc,
+                                min_price_increment=Decimal(0.280),
                                 min_base_amount_increment=min_amount_inc))
 
             except Exception:
@@ -616,8 +632,8 @@ class TegroExchange(ExchangePyBase):
         await self._initialize_verified_market(trading_pair)
         user_orders = await self._api_get(
             path_url=CONSTANTS.ORDER_LIST.format(self.api_key),
-            params={"chain_id": CONSTANTS.CHAIN_ID,
-                    "market_id": f'{self._market["market"]["ID"]}',
+            params={"chain_id": self.chain,
+                    "market_id": f'{self._market["data"]["id"]}',
                     "statuses": "matched"},
             limit_id=CONSTANTS.ORDER_LIST,
             is_auth_required=False,
@@ -649,7 +665,7 @@ class TegroExchange(ExchangePyBase):
         for order_id, trades_data in zip(order_ids, trades_results):
             if isinstance(trades_data, Exception):
                 # Handle errors appropriately
-                self.logger(f"Error fetching trades for order ID {order_id}: {trades_data}")
+                self.logger(f"Error fetching trades for order ID {order_id}")
             else:
                 for trade_data in trades_data:
                     trade_data['orderId'] = order_id
@@ -806,8 +822,8 @@ class TegroExchange(ExchangePyBase):
         Fetches the list of orders from the API.
         """
         params = {
-            "chain_id": CONSTANTS.CHAIN_ID,
-            "market_id": str(self._market["market"]["ID"])
+            "chain_id": self.chain,
+            "market_id": str(self._market["data"]["id"])
         }
 
         response = await self._api_get(
@@ -857,24 +873,27 @@ class TegroExchange(ExchangePyBase):
 
         await self._initialize_market_list()
         data = set()
-        for res in self._markets:
-            data.update((res["BaseSymbol"], res["QuoteSymbol"]))
+        for res in self._markets["data"]:
+            data.update((res["base_symbol"], res["quote_symbol"]))
 
         all_asset_names = data
         symbols.update(SUPPORTED_CHAINS)
         symbols.update(all_asset_names)
 
-        account_info = await self._api_get(
-            path_url=CONSTANTS.ACCOUNTS_PATH_URL.format(f"{CONSTANTS.CHAIN_ID}/{self.api_key}"),
+        account_info = await self._api_requests(
+            method="GET",
+            path_url=CONSTANTS.ACCOUNTS_PATH_URL.format(self.chain, self.api_key),
             limit_id=CONSTANTS.ACCOUNTS_PATH_URL,
+            new_url = False,
             is_auth_required=False)
 
-        balances = account_info
+        balances = account_info["data"]
         for balance_entry in balances:
             asset_name = balance_entry["symbol"]
+            balance: Decimal = PerformanceMetrics.smart_round(Decimal(float(balance_entry["balance"])), 4)
             if asset_name in symbols:
-                free_balance = Decimal(balance_entry["balance"])
-                total_balance = Decimal(balance_entry["balance"])
+                free_balance = balance
+                total_balance = balance
                 self._account_available_balances[asset_name] = free_balance
                 self._account_balances[asset_name] = total_balance
                 remote_asset_names.add(asset_name)
@@ -886,8 +905,14 @@ class TegroExchange(ExchangePyBase):
 
     async def _initialize_trading_pair_symbol_map(self):
         try:
-            params = {"chain_id": CONSTANTS.CHAIN_ID, "verified": "true", "page": 1, "page_size": 20, "sort_order": "desc"}
-            exchange_info = await self._api_get(path_url=self.trading_pairs_request_path, params=params)
+            data = await self._api_requests(
+                method="GET",
+                path_url=self.trading_pairs_request_path.format(self.chain),
+                is_auth_required=False,
+                new_url = True,
+                limit_id=CONSTANTS.EXCHANGE_INFO_PATH_LIST_URL
+            )
+            exchange_info = data["data"]
             self._initialize_trading_pair_symbols_from_exchange_info(exchange_info=exchange_info)
         except Exception:
             self.logger().exception("There was an error requesting exchange info.")
@@ -896,42 +921,149 @@ class TegroExchange(ExchangePyBase):
         mapping = bidict()
 
         for entry in filter(tegro_utils.is_exchange_information_valid, exchange_info):
-            base, quote = entry['Symbol'].split('_')
+            base, quote = entry['symbol'].split('_')
 
-            mapping[entry["Symbol"]] = combine_to_hb_trading_pair(
+            mapping[entry["symbol"]] = combine_to_hb_trading_pair(
                 base=base,
                 quote=quote
             )
 
         self._set_trading_pair_symbol_map(mapping)
 
+    async def _initialize_market_list(self):
+        try:
+            self._markets = await self._api_requests(
+                method="GET",
+                path_url=CONSTANTS.MARKET_LIST_PATH_URL.format(self.chain),
+                is_auth_required=False,
+                new_url = True,
+                limit_id=CONSTANTS.MARKET_LIST_PATH_URL,
+            )
+        except Exception:
+            self.logger().error(
+                "Unexpected error occurred fetching market data...", exc_info=True
+            )
+            raise
+
+    async def _initialize_verified_market(self, trading_pair: str):
+        sym = trading_pair.replace('_', '-')
+        symbol = await self.exchange_symbol_associated_to_pair(trading_pair=sym)
+        try:
+            self._market = await self._api_requests(
+                method="GET",
+                path_url=CONSTANTS.EXCHANGE_INFO_PATH_URL.format(self.chain, symbol),
+                is_auth_required=False,
+                new_url = True,
+                limit_id=CONSTANTS.EXCHANGE_INFO_PATH_URL,
+            )
+        except Exception:
+            self.logger().error(
+                "Unexpected error occurred fetching market data...", exc_info=True
+            )
+            raise
+
     async def _get_last_traded_price(self, trading_pair: str) -> float:
-        params = {
-            "symbol": await self.exchange_symbol_associated_to_pair(trading_pair=trading_pair),
-            "chain_id": CONSTANTS.CHAIN_ID,
-        }
-        resp_json = await self._api_request(
-            method=RESTMethod.GET,
-            path_url=CONSTANTS.TICKER_PRICE_CHANGE_PATH_URL,
-            params=params
+        symbol = await self.exchange_symbol_associated_to_pair(trading_pair=trading_pair)
+        resp_json = await self._api_requests(
+            method="GET",
+            path_url=CONSTANTS.TICKER_PRICE_CHANGE_PATH_URL.format(self.chain, symbol),
+            is_auth_required=False,
+            new_url = True,
+            limit_id=CONSTANTS.TICKER_PRICE_CHANGE_PATH_URL
         )
 
-        return float(resp_json["market"]["ticker"]["price"])
+        return float(resp_json["data"]["ticker"]["price"])
 
     async def _make_network_check_request(self):
-        await self._api_get(path_url=self.check_network_request_path,
-                            params = {"chain_id": CONSTANTS.CHAIN_ID, "verified": "true", "page": 1, "page_size": 20, "sort_order": "desc"},
-                            headers={"Content-Type": "application/json"})
+        await self._api_requests(
+            method="GET",
+            path_url=self.check_network_request_path.format(self.chain),
+            is_auth_required=False,
+            new_url = True,
+            limit_id=CONSTANTS.PING_PATH_URL
+        )
 
     async def _make_trading_rules_request(self) -> Any:
-        exchange_info = await self._api_get(path_url=self.trading_rules_request_path,
-                                            params = {"chain_id": CONSTANTS.CHAIN_ID, "verified": "true", "page": 1, "page_size": 20, "sort_order": "desc"},
-                                            headers={"Content-Type": "application/json"})
+        data = await self._api_requests(
+            method="GET",
+            path_url=self.trading_rules_request_path.format(self.chain),
+            is_auth_required=False,
+            new_url = True,
+            limit_id=CONSTANTS.EXCHANGE_INFO_PATH_LIST_URL
+        )
+        exchange_info = data["data"]
         return exchange_info
 
     async def _make_trading_pairs_request(self) -> Any:
-        exchange_info = await self._api_get(
-            path_url=self.trading_pairs_request_path,
-            params = {"chain_id": CONSTANTS.CHAIN_ID, "verified": "true", "page": 1, "page_size": 20, "sort_order": "desc"},
-            headers={"Content-Type": "application/json"})
+        data = await self._api_requests(
+            method="GET",
+            path_url=self.trading_pairs_request_path.format(self.chain),
+            is_auth_required=False,
+            new_url = True,
+            limit_id=CONSTANTS.EXCHANGE_INFO_PATH_LIST_URL
+        ),
+        exchange_info = data["data"]
         return exchange_info
+
+    async def _api_requests(self,
+                            method: str,
+                            path_url: str,
+                            params: Optional[Dict[str, Any]] = None,
+                            data: Optional[Dict[str, Any]] = None,
+                            is_auth_required: bool = False,
+                            new_url: bool = False,
+                            limit_id: Optional[str] = None) -> Union[Dict[str, Any], List[Any]]:
+        """
+        Sends an aiohttp request and waits for a response.
+        :param method: The HTTP method, e.g. get or post
+        :param path_url: The path url or the API end point
+        :param params: The query parameters of the API request
+        :param params: The body parameters of the API request
+        :param is_auth_required: Whether an authentication is required, when True the function will add encrypted
+        signature to the request.
+        :param limit_id: The id used for the API throttler. If not supplied, the `path_url` is used instead.
+        :returns A response in json format.
+        """
+        if new_url:
+            url = web_utils.rest_url(path_url, self.domain)
+        else:
+            url = web_utils.acc_url(path_url, self.domain)
+
+        try:
+            if is_auth_required:
+                headers = self.authenticator.get_auth_headers()
+            else:
+                headers = self.authenticator.get_headers()
+
+            limit_id = limit_id or path_url
+            if method == "GET":
+                async with self._throttler.execute_task(limit_id):
+                    response = await self._shared_client.get(url, headers=headers, params=params)
+            elif method == "POST":
+                async with self._throttler.execute_task(limit_id):
+                    response = await self._shared_client.post(url, headers=headers, data=ujson.dumps(data))
+            else:
+                raise NotImplementedError(f"{method} HTTP Method not implemented. ")
+
+            data = await response.text()
+            if data == CONSTANTS.API_LIMIT_REACHED_ERROR_MESSAGE:
+                raise Exception(f"The exchange API request limit has been reached (original error '{data}')")
+
+            parsed_response = await response.json()
+
+        except ValueError as e:
+            self.logger().error(f"{str(e)}")
+            raise ValueError(f"Error authenticating request {method} {url}. Error: {str(e)}")
+        except Exception as e:
+            raise IOError(f"Error parsing data from {url}. Error: {str(e)}")
+        if response.status != 200 or (isinstance(parsed_response, dict) and not parsed_response.get("result", True)):
+            self.logger().error(f"Error fetching data from {url}. HTTP status is {response.status}. "
+                                f"Message: {parsed_response} "
+                                f"Params: {params} "
+                                f"Data: {data}")
+            raise Exception(f"Error fetching data from {url}. HTTP status is {response.status}. "
+                            f"Message: {parsed_response} "
+                            f"Params: {params} "
+                            f"Data: {data}")
+
+        return parsed_response
