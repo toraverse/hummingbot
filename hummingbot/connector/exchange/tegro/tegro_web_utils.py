@@ -27,8 +27,18 @@ def public_rest_url(path_url: str, domain: str = "tegro"):
     return base_url + path_url
 
 
+def rest_url(path_url: str, domain: str = "tegro"):
+    base_url = CONSTANTS.MAINNET_NEW_URL if domain == "tegro" else CONSTANTS.TESTNET_NEW_URL
+    return base_url + path_url
+
+
+def acc_url(path_url: str, domain: str = "tegro"):
+    base_url = CONSTANTS.MAINNET_ACC_URL if domain == "tegro" else CONSTANTS.TESTNET_ACC_URL
+    return base_url + path_url
+
+
 def private_rest_url(path_url: str, domain: str = "tegro"):
-    base_url = CONSTANTS.TEGRO_BASE_URL if domain == "tegro" else CONSTANTS.TESTNET_BASE_URL
+    base_url = CONSTANTS.MAINNET_ACC_URL if domain == "tegro" else CONSTANTS.TESTNET_BASE_URL
     return base_url + path_url
 
 
