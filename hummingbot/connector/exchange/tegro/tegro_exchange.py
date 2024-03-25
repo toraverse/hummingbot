@@ -415,7 +415,6 @@ class TegroExchange(ExchangePyBase):
                                     f"No cancelation needed.")
 
                 await self._order_tracker.process_order_not_found(order_id)
-            else:
                 raise
         if cancel_result.get("message") == "Order Cancel request is successful.":
             return True
