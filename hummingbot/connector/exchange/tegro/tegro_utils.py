@@ -142,7 +142,7 @@ class TegroConfigMap(BaseConnectorConfigMap):
     chain: str = Field(
         default=...,
         client_data=ClientFieldData(
-            prompt=lambda cm: "Enter your preferred network.(polygon/optimism/arbitrum)",
+            prompt=lambda cm: "Enter your preferred chain. (polygon/optimism/arbitrum)",
             is_secure=False,
             is_connect_key=True,
             prompt_on_new=True,
@@ -175,7 +175,7 @@ class TegroTestnetConfigMap(BaseConnectorConfigMap):
     tegro_api_key: SecretStr = Field(
         default=...,
         client_data=ClientFieldData(
-            prompt=lambda cm: "Enter your tegro public API key",
+            prompt=lambda cm: "Enter your tegro public key",
             is_secure=True,
             is_connect_key=True,
             prompt_on_new=True,
@@ -193,7 +193,7 @@ class TegroTestnetConfigMap(BaseConnectorConfigMap):
     chain: str = Field(
         default=...,
         client_data=ClientFieldData(
-            prompt=lambda cm: "Enter your preferred chain (polygon/optimism)",
+            prompt=lambda cm: "Enter your preferred chain. (polygon/optimism)",
             is_secure=False,
             is_connect_key=True,
             prompt_on_new=True,
