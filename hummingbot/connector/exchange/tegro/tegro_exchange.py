@@ -351,6 +351,8 @@ class TegroExchange(ExchangePyBase):
                 is_auth_required=False,
                 limit_id=CONSTANTS.ORDER_PATH_URL,
             )
+            o_id = str(data["data"]["orderId"])
+            transact_time = tegro_utils.datetime_val_or_now(data["data"]["timestamp"], on_error_return_now=True).timestamp(),
         except IOError as e:
             error_description = str(e)
             is_server_overloaded = ("status is 503" in error_description
@@ -360,8 +362,6 @@ class TegroExchange(ExchangePyBase):
                 transact_time = int(datetime.now(timezone.utc).timestamp() * 1e3)
             else:
                 raise
-        o_id = str(data["data"]["orderId"])
-        transact_time = tegro_utils.datetime_val_or_now(data["data"]["timestamp"], on_error_return_now=True).timestamp(),
         return o_id, transact_time
 
     async def generate_typed_data(self, amount, order_type, price, trade_type, trading_pair) -> Dict[str, Any]:
@@ -400,12 +400,15 @@ class TegroExchange(ExchangePyBase):
             "signature": signature,
         }
         try:
+            new_res = []
             cancel_result = await self._api_request(
                 path_url=CONSTANTS.CANCEL_ORDER_URL,
                 method=RESTMethod.POST,
                 data=params,
                 is_auth_required=False,
                 limit_id=CONSTANTS.CANCEL_ORDER_URL)
+            if cancel_result.get("message") is not None:
+                new_res.append(cancel_result.get("message"))
         except IOError as e:
             error_description = str(e)
             is_not_active = ("status is 400" in error_description
@@ -413,12 +416,11 @@ class TegroExchange(ExchangePyBase):
             if is_not_active:
                 self.logger().debug(f"The order {order_id} does not exist on tegro."
                                     f"No cancelation needed.")
-
                 await self._order_tracker.process_order_not_found(order_id)
+                new_res.append("Order is not active")
+            else:
                 raise
-        if cancel_result.get("message") == "Order Cancel request is successful.":
-            return True
-        return False
+        return True if ("Order cancelled successfully" in new_res[0] or "Order is not active" in new_res[0])else False
 
     async def cancel_all(self, timeout_sec: float) -> List[CancellationResult]:
         """
