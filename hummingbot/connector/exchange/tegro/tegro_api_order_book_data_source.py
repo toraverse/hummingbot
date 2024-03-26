@@ -154,8 +154,8 @@ class TegroAPIOrderBookDataSource(OrderBookTrackerDataSource):
 
     def _channel_originating_message(self, event_message: Dict[str, Any]) -> str:
         channel = ""
-        if "data" in event_message:
-            event_channel = event_message.get("m")
+        if "action" in event_message:
+            event_channel = event_message.get("data")
             if event_channel == CONSTANTS.TRADE_EVENT_TYPE:
                 channel = self._trade_messages_queue_key
             if event_channel == CONSTANTS.DIFF_EVENT_TYPE:
