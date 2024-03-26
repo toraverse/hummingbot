@@ -476,7 +476,7 @@ class TegroExchange(ExchangePyBase):
                           executed_amount=Decimal(str(order["quantity"])),
                           status=order["status"],
                           order_type=OrderType.LIMIT,
-                          is_buy=True if order["side"] == "Buy" else False,
+                          is_buy=True if order["side"] == "buy" else False,
                           time=tegro_utils.datetime_val_or_now(order.get('time'), on_error_return_now=True).timestamp(),
                           exchange_order_id=order["orderId"],
                           )
