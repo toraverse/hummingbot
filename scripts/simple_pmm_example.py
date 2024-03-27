@@ -21,7 +21,7 @@ class SimplePMM(ScriptStrategyBase):
     bid_spread = 0.001
     ask_spread = 0.001
     order_refresh_time = 15
-    order_amount = 2
+    order_amount = 0.01
     create_timestamp = 0
     trading_pair = "ETH-USDT"
     exchange = "kucoin_paper_trade"
