@@ -13,13 +13,17 @@ class TegroOrderBookTests(TestCase):
                 "Asks": [
                     {
                         "price": 6097.00,
-                        "quantity": "1600"
+                        "price_float": 0.0061,
+                        "quantity": 1600,
+                        "quantity_float": 0.16
                     },
                 ],
                 "Bids": [
                     {
                         "price": 712,
-                        "quantity": 5000
+                        "price_float": 0.0071,
+                        "quantity": 5000,
+                        "quantity_float": 5
                     },
 
                 ]
@@ -51,13 +55,17 @@ class TegroOrderBookTests(TestCase):
                     "bids": [
                         {
                             "price": 6097.00,
-                            "quantity": 1600
+                            "price_float": 0.0061,
+                            "quantity": 1600,
+                            "quantity_float": 0.16
                         },
                     ],
                     "asks": [
                         {
                             "price": 712,
-                            "quantity": 5000
+                            "price_float": 0.0071,
+                            "quantity": 5000,
+                            "quantity_float": 5
                         },
                     ]
                 }},

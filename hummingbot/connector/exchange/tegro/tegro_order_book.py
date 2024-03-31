@@ -31,8 +31,8 @@ class TegroOrderBook(OrderBook):
         parsed_entries = []
         if entries is not None:
             for entry in entries:
-                price = Decimal(entry.get('price', 0)) / 10000
-                quantity = Decimal(entry.get('quantity', 0)) / 10000
+                price = Decimal(entry.get('price_float', 0))
+                quantity = Decimal(entry.get('quantity_float', 0))
                 if price is not None and quantity is not None:
                     parsed_entry = [float(price), float(quantity)]
                     parsed_entries.append(parsed_entry)
@@ -55,8 +55,8 @@ class TegroOrderBook(OrderBook):
         return OrderBookMessage(OrderBookMessageType.DIFF, {
             "trading_pair": msg["trading_pair"],
             "update_id": msg["data"]["timestamp"],
-            "bids": [[float(entry['price']), entry['quantity']] for entry in msg["data"]["bids"] / 10000],
-            "asks": [[float(entry['price']), entry['quantity']] for entry in msg["data"]["asks"] / 10000],
+            "bids": [[float(entry['price_float']), entry['quantity_float']] for entry in msg["data"]["bids"]],
+            "asks": [[float(entry['price_float']), entry['quantity_float']] for entry in msg["data"]["asks"]],
         }, timestamp=timestamp * 1e-3)
 
     @classmethod
