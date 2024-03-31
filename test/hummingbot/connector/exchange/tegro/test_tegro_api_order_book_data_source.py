@@ -115,13 +115,17 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
                 "bids": [
                     {
                         "price": "60.9700",
-                        "quantity": "1600"
+                        "price_float": 0.0061,
+                        "quantity": "1600",
+                        "quantity_float": 0.16
                     },
                 ],
                 "asks": [
                     {
                         "price": "71.29",
-                        "quantity": "50000"
+                        "price_float": 0.0071,
+                        "quantity": "50000",
+                        "quantity_float": 5
                     },
                 ]
             }}
@@ -133,13 +137,17 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
             "Bids": [
                 {
                     "price": "6097.00",
-                    "quantity": "1600"
+                    "price_float": 0.61,
+                    "quantity": "1600",
+                    "quantity_float": 0.16
                 },
             ],
             "Asks": [
                 {
                     "price": "7129",
-                    "quantity": "50000"
+                    "price_float": 0.071,
+                    "quantity": "50000",
+                    "quantity_float": 5
                 },
             ]
         }
