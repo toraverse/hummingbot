@@ -16,29 +16,29 @@ class TegroeUtilTestCases(unittest.TestCase):
 
     def test_is_exchange_information_valid(self):
         invalid_info_1 = {
-            "State": "unverified",
-            "Symbol": "BTC_HBOT"
+            "state": "unverified",
+            "symbol": "BTC_HBOT"
         }
 
         self.assertFalse(utils.is_exchange_information_valid(invalid_info_1))
 
         invalid_info_2 = {
-            "State": "unverified",
-            "Symbol": "POKEMAN_HBOT"
+            "state": "unverified",
+            "symbol": "POKEMAN_HBOT"
         }
 
         self.assertFalse(utils.is_exchange_information_valid(invalid_info_2))
 
         invalid_info_3 = {
-            "State": "unverified",
-            "Symbol": "BTC_HBOT"
+            "state": "unverified",
+            "symbol": "BTC_HBOT"
         }
 
         self.assertFalse(utils.is_exchange_information_valid(invalid_info_3))
 
         invalid_info_4 = {
-            "State": "verified",
-            "Symbol": "COINALPHA_HBOT"
+            "state": "verified",
+            "symbol": "COINALPHA_HBOT"
         }
 
         self.assertTrue(utils.is_exchange_information_valid(invalid_info_4))

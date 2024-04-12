@@ -108,12 +108,12 @@ class TegroExchange(ExchangePyBase):
 
     @property
     def chain(self):
-        if self.chain_id is None:
-            chain = CONSTANTS.CHAIN_ID
-        elif self.domain == "tegro":
+        if self.chain_id is not None and self.domain == "tegro":
             chain = CONSTANTS.MAINNET_CHAIN_IDS[self.chain_id]
-        else:
+        elif self.chain_id is not None and self.domain == "tegro_testnet":
             chain = CONSTANTS.TESTNET_CHAIN_IDS[self.chain_id]
+        else:
+            chain = CONSTANTS.CHAIN_ID
         return chain
 
     @property
@@ -130,7 +130,7 @@ class TegroExchange(ExchangePyBase):
 
     @property
     def check_network_request_path(self):
-        return CONSTANTS.PING_PATH_URL
+        return CONSTANTS.CHAIN_LIST
 
     @property
     def trading_pairs(self):
@@ -145,7 +145,7 @@ class TegroExchange(ExchangePyBase):
         return self._trading_required
 
     def supported_order_types(self):
-        return [OrderType.LIMIT, OrderType.LIMIT_MAKER]
+        return [OrderType.LIMIT, OrderType.MARKET]
 
     async def get_all_pairs_prices(self) -> List[Dict[str, str]]:
         results = {}
@@ -333,6 +333,8 @@ class TegroExchange(ExchangePyBase):
 
         api_params = {
             "chain_id": self.chain,
+            "base_asset": transaction_data["data"]["limit_order"]["base_asset"],
+            "quote_asset": transaction_data["data"]["limit_order"]["quote_asset"],
             "side": transaction_data["data"]["limit_order"]["side"],
             "volume_precision": transaction_data["data"]["limit_order"]["volume_precision"],
             "price_precision": transaction_data["data"]["limit_order"]["price_precision"],
@@ -435,9 +437,8 @@ class TegroExchange(ExchangePyBase):
         tracked_orders = self.in_flight_orders
         try:
             for order in tracked_orders.values():
-                exchange_order_id = await order.get_exchange_order_id()
                 self.cancel(trading_pair=order.trading_pair,
-                            client_order_id=exchange_order_id)
+                            client_order_id=order.client_order_id)
 
             open_orders = await self.get_open_orders()
 
@@ -470,7 +471,7 @@ class TegroExchange(ExchangePyBase):
                                                                     is_auth_required=False)
 
         return [OpenOrder(client_order_id=order["orderId"],
-                          trading_pair=[f'{order["baseCurrency"]}_{order["quoteCurrency"]}'],
+                          trading_pair=[f'{order["baseCurrency"]}-{order["quoteCurrency"]}'],
                           price=Decimal(str(order["price"])),
                           amount=Decimal(str(order["quantity"])),
                           executed_amount=Decimal(str(order["quantity"])),
@@ -978,10 +979,10 @@ class TegroExchange(ExchangePyBase):
     async def _make_network_check_request(self):
         await self._api_requests(
             method="GET",
-            path_url=self.check_network_request_path.format(self.chain),
+            path_url=self.check_network_request_path,
             is_auth_required=False,
             new_url = True,
-            limit_id=CONSTANTS.PING_PATH_URL
+            limit_id=CONSTANTS.CHAIN_LIST
         )
 
     async def _make_trading_rules_request(self) -> Any:
@@ -1034,7 +1035,7 @@ class TegroExchange(ExchangePyBase):
             if is_auth_required:
                 headers = self.authenticator.get_auth_headers()
             else:
-                headers = self.authenticator.get_headers()
+                headers = self.authenticator.header_for_authentication()
 
             limit_id = limit_id or path_url
             if method == "GET":

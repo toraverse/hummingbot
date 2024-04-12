@@ -29,6 +29,7 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
         cls.base_asset = "KRYPTONITE"
         cls.quote_asset = "USDT"
         cls.tegro_api_key = "",
+        cls.chain = ""
         cls.trading_pair = f"{cls.base_asset}-{cls.quote_asset}"
         cls.ex_trading_pair = cls.base_asset + cls.quote_asset
         cls.domain = "tegro"
@@ -44,6 +45,7 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
             client_config_map=client_config_map,
             tegro_api_key="",
             tegro_api_secret="",
+            chain="polygon",
             trading_pairs=[],
             trading_required=False,
             domain=self.domain)
@@ -145,7 +147,7 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
             "Asks": [
                 {
                     "price": "7129",
-                    "price_float": 0.071,
+                    "price_float": 0.0713,
                     "quantity": "50000",
                     "quantity_float": 5
                 },
@@ -225,12 +227,12 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
         bids = list(order_book.bid_entries())
         asks = list(order_book.ask_entries())
         self.assertEqual(1, len(bids))
-        self.assertEqual(6097, bids[0].price)
-        self.assertEqual(1600, bids[0].amount)
+        self.assertEqual(0.61, bids[0].price)
+        self.assertEqual(0.16, bids[0].amount)
         self.assertEqual(expected_update_id, bids[0].update_id)
         self.assertEqual(1, len(asks))
-        self.assertEqual(7129, asks[0].price)
-        self.assertEqual(50000, asks[0].amount)
+        self.assertEqual(0.0713, asks[0].price)
+        self.assertEqual(5, asks[0].amount)
         self.assertEqual(expected_update_id, asks[0].update_id)
 
     @aioresponses()

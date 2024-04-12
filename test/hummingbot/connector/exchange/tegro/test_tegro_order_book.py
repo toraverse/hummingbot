@@ -13,7 +13,7 @@ class TegroOrderBookTests(TestCase):
                 "Asks": [
                     {
                         "price": 6097.00,
-                        "price_float": 0.0061,
+                        "price_float": 0.61,
                         "quantity": 1600,
                         "quantity_float": 0.16
                     },
@@ -21,9 +21,9 @@ class TegroOrderBookTests(TestCase):
                 "Bids": [
                     {
                         "price": 712,
-                        "price_float": 0.0071,
+                        "price_float": 0.0712,
                         "quantity": 5000,
-                        "quantity_float": 5
+                        "quantity_float": 0.5
                     },
 
                 ]
@@ -37,12 +37,12 @@ class TegroOrderBookTests(TestCase):
         self.assertEqual(1708817206, snapshot_message.update_id)
         self.assertEqual(-1, snapshot_message.trade_id)
         self.assertEqual(1, len(snapshot_message.bids))
-        self.assertEqual(712.0, snapshot_message.bids[0].price)
-        self.assertEqual(5000.0, snapshot_message.bids[0].amount)
+        self.assertEqual(0.0712, snapshot_message.bids[0].price)
+        self.assertEqual(0.5, snapshot_message.bids[0].amount)
         self.assertEqual(1708817206, snapshot_message.bids[0].update_id)
         self.assertEqual(1, len(snapshot_message.asks))
-        self.assertEqual(6097, snapshot_message.asks[0].price)
-        self.assertEqual(1600.0, snapshot_message.asks[0].amount)
+        self.assertEqual(0.61, snapshot_message.asks[0].price)
+        self.assertEqual(0.16, snapshot_message.asks[0].amount)
         self.assertEqual(1708817206, snapshot_message.asks[0].update_id)
 
     def test_diff_message_from_exchange(self):
@@ -55,7 +55,7 @@ class TegroOrderBookTests(TestCase):
                     "bids": [
                         {
                             "price": 6097.00,
-                            "price_float": 0.0061,
+                            "price_float": 0.61,
                             "quantity": 1600,
                             "quantity_float": 0.16
                         },
@@ -63,9 +63,9 @@ class TegroOrderBookTests(TestCase):
                     "asks": [
                         {
                             "price": 712,
-                            "price_float": 0.0071,
+                            "price_float": 0.0712,
                             "quantity": 5000,
-                            "quantity_float": 5
+                            "quantity_float": 0.5
                         },
                     ]
                 }},
@@ -77,12 +77,12 @@ class TegroOrderBookTests(TestCase):
         self.assertEqual(1640000000.0, diff_msg.timestamp)
         self.assertEqual(-1, diff_msg.trade_id)
         self.assertEqual(1, len(diff_msg.bids))
-        self.assertEqual(6097.0, diff_msg.bids[0].price)
-        self.assertEqual(1600.0, diff_msg.bids[0].amount)
+        self.assertEqual(0.61, diff_msg.bids[0].price)
+        self.assertEqual(0.16, diff_msg.bids[0].amount)
         self.assertEqual(1708817206, diff_msg.bids[0].update_id)
         self.assertEqual(1, len(diff_msg.asks))
-        self.assertEqual(712.0, diff_msg.asks[0].price)
-        self.assertEqual(5000, diff_msg.asks[0].amount)
+        self.assertEqual(0.0712, diff_msg.asks[0].price)
+        self.assertEqual(0.5, diff_msg.asks[0].amount)
         self.assertEqual(1708817206, diff_msg.asks[0].update_id)
 
     def test_trade_message_from_exchange(self):
