@@ -24,7 +24,7 @@ class SimpleArbitrage(ScriptStrategyBase):
     base = "ETH"
     quote = "USDT"
     trading_pair = f"{base}-{quote}"
-    exchange_A = "binance_paper_trade"
+    exchange_A = "tegro"
     exchange_B = "kucoin_paper_trade"
 
     markets = {exchange_A: {trading_pair},
