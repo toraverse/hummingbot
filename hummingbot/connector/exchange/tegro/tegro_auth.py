@@ -5,7 +5,7 @@ from typing import Any, Dict
 from eth_account import Account, messages
 
 from hummingbot.core.web_assistant.auth import AuthBase
-from hummingbot.core.web_assistant.connections.data_types import RESTRequest, WSRequest
+from hummingbot.core.web_assistant.connections.data_types import RESTMethod, RESTRequest, WSRequest
 
 
 class TegroAuth(AuthBase):
@@ -33,13 +33,16 @@ class TegroAuth(AuthBase):
         the required parameter in the request header.
         :param request: the request to be configured for authenticated interaction
         """
+        if request.method == RESTMethod.POST:
+            request.data = self.add_auth_to_params(params=json.loads(request.data) if request.data is not None else {})
+        else:
+            request.params = self.add_auth_to_params(params=request.params)
         # Generates auth headers
-        headers_auth = self.get_auth_headers()
 
         headers = {}
         if request.headers is not None:
             headers.update(request.headers)
-        headers.update(headers_auth)
+        headers.update(self.header_for_authentication())
         request.headers = headers
 
         return request
@@ -47,19 +50,7 @@ class TegroAuth(AuthBase):
     async def ws_authenticate(self, request: WSRequest) -> WSRequest:
         return request  # pass-through
 
-    def _sign_order_params(self, params):
-        # datas to sign
-        addr = params["WalletAddress"]
-        address = addr.lower()
-        structured_data = messages.encode_defunct(text=address)
-        signature = self.sign_inner(structured_data)
-
-        payload = {
-            "signature": signature.signature.hex(),
-        }
-        return payload
-
-    def generate_auth_dict(self) -> Dict[str, Any]:
+    def _generate_auth_dict(self) -> Dict[str, Any]:
         """
         Generates a dictionary with all required information for the authentication process
         :return: a dictionary of authentication info including the request signature
@@ -69,32 +60,23 @@ class TegroAuth(AuthBase):
         structured_data = messages.encode_defunct(text=address)
         signature = self.sign_inner(structured_data)
 
-        payload = {
-            "signature": signature,
-        }
+        return signature
 
-        return payload
+    def add_auth_to_params(self,
+                           params: Dict[str, Any]):
+        request_params = OrderedDict(params or {})
 
-    def add_auth_to_params_post(self, params: str):
-        payload = {}
-        data = json.loads(params) if params is not None else {}
-        request_params = OrderedDict(data or {})
+        signature = self._generate_auth_dict()
+        request_params["signature"] = signature
 
-        payload = self._sign_order_params(request_params)
-        payload = json.dumps(payload)
-        return payload
+        return request_params
 
-    def get_headers(self) -> Dict[str, Any]:
-        """
-        Generates authentication headers required by ProBit
-        :return: a dictionary of auth headers
-        """
-
+    def header_for_authentication(self) -> Dict[str, Any]:
         return {
             "Content-Type": 'application/json',
         }
 
     def get_auth_headers(self):
-        headers = self.get_headers()
-        headers.update(self.generate_auth_dict())
+        headers = self.header_for_authentication()
+        headers.update(self._generate_auth_dict())
         return headers

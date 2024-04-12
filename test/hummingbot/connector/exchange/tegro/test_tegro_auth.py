@@ -11,11 +11,12 @@ from hummingbot.core.web_assistant.connections.data_types import RESTMethod, RES
 class TegroAuthTests(TestCase):
     def setUp(self) -> None:
         super().setUp()
+        self.chain_id = 80001
         self.api_key = "testApiKey"
         self.secret_key = (
             "13e56ca9cceebf1f33065c2c5376ab38570a114bc1b003b60d838f92be9d7930"  # noqa: mock
         )
-        self.auth = TegroAuth(api_key=self.api_key, api_secret=self.secret_key)
+        self.auth = TegroAuth(api_key=self.api_key, api_secret=self.secret_key, chain_id=self.chain_id)
 
     def async_run_with_timeout(self, coroutine):
         return asyncio.get_event_loop().run_until_complete(
@@ -24,7 +25,7 @@ class TegroAuthTests(TestCase):
 
     @mock.patch("hummingbot.connector.exchange.tegro.tegro_auth.Account.sign_message")
     @mock.patch("hummingbot.connector.exchange.tegro.tegro_auth.messages.encode_defunct")
-    def test_sign_order_params_post_request(
+    def test_rest_authenticate_adds_signature_to_post_request(
         self, mock_encode_defunct, mock_sign_message
     ):
         # Mocking dependencies
@@ -53,10 +54,10 @@ class TegroAuthTests(TestCase):
         expected_signature = (
             "0xc5bb16ccc59ae9a3ad1cb8343d4e3351f057c994a97656e1aff8c134e56f7530"  # noqa: mock
         )
+        self.assertEqual(signed_request.data["signature"], expected_signature)
+
         expected_private_key = HexBytes(self.secret_key)
-        expected_data = {"signature": expected_signature}
-        mock_encode_defunct.assert_called_once_with(text="testapikey")
+        mock_encode_defunct.assert_called_once_with(text=self.api_key.lower())
         mock_sign_message.assert_called_once_with(
             "encoded_data", private_key=expected_private_key
         )
-        self.assertEqual(json.loads(signed_request.data), expected_data)

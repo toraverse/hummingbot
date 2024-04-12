@@ -52,7 +52,7 @@ SNAPSHOT_PATH_URL = "market/orderbook/depth"
 # REST API ENDPOINTS
 ACCOUNTS_PATH_URL = "{}/{}/portfolio"
 MARKET_LIST_PATH_URL = "{}/market/list"
-GENERATE_SIGN_URL = "market/orders/typedData/generate/v2"
+GENERATE_SIGN_URL = "market/orders/typedData/generate"
 TRADES_PATH_URL = "{}/market/trades"
 TRADES_FOR_ORDER_PATH_URL = "market/orders/trades/{}"
 ORDER_PATH_URL = "market/orders/place"
