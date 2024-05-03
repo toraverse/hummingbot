@@ -20,12 +20,6 @@ TESTNET_BASE_URL = "https://api.testnet.tegro.com/api/"
 TEGRO_WS_URL = "wss://api.tegro.com/api/v1/events/"
 TESTNET_WS_URL = "wss://events.testnet.tegro.com/"
 
-MAINNET_NEW_URL = "https://api.tegro.com/api/"
-TESTNET_NEW_URL = "https://api.testnet.tegro.com/api/"
-
-MAINNET_ACC_URL = "https://api.tegro.com/api/"
-TESTNET_ACC_URL = "https://api.testnet.tegro.com/api/"
-
 CHAIN_ID = 8453
 
 MAINNET_CHAIN_IDS = {

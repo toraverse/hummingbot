@@ -2,11 +2,10 @@ import asyncio
 import math
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 import aiohttp
 import eth_account
-import ujson
 from bidict import bidict
 from eth_account import Account, messages
 
@@ -148,7 +147,7 @@ class TegroExchange(ExchangePyBase):
 
     async def get_all_pairs_prices(self) -> List[Dict[str, str]]:
         results = {}
-        data = await self._api_requests(
+        data = await self._api_request(
             method="GET",
             path_url=CONSTANTS.EXCHANGE_INFO_PATH_LIST_URL.format(self.chain),
             limit_id=CONSTANTS.EXCHANGE_INFO_PATH_LIST_URL,
@@ -886,8 +885,8 @@ class TegroExchange(ExchangePyBase):
         symbols.update(SUPPORTED_CHAINS)
         symbols.update(all_asset_names)
 
-        account_info = await self._api_requests(
-            method="GET",
+        account_info = await self._api_request(
+            method=RESTMethod.GET,
             path_url=CONSTANTS.ACCOUNTS_PATH_URL.format(self.chain, self.api_key),
             limit_id=CONSTANTS.ACCOUNTS_PATH_URL,
             new_url = False,
@@ -912,8 +911,8 @@ class TegroExchange(ExchangePyBase):
 
     async def _initialize_trading_pair_symbol_map(self):
         try:
-            data = await self._api_requests(
-                method = "GET",
+            data = await self._api_request(
+                method=RESTMethod.GET,
                 path_url = self.trading_pairs_request_path.format(self.chain),
                 is_auth_required = False,
                 new_url = True,
@@ -939,8 +938,8 @@ class TegroExchange(ExchangePyBase):
 
     async def _initialize_market_list(self):
         try:
-            self._markets = await self._api_requests(
-                method = "GET",
+            self._markets = await self._api_request(
+                method=RESTMethod.GET,
                 path_url = CONSTANTS.MARKET_LIST_PATH_URL.format(self.chain),
                 is_auth_required = False,
                 new_url = True,
@@ -956,8 +955,8 @@ class TegroExchange(ExchangePyBase):
         sym = trading_pair.replace('_', '-')
         symbol = await self.exchange_symbol_associated_to_pair(trading_pair=sym)
         try:
-            self._market = await self._api_requests(
-                method = "GET",
+            self._market = await self._api_request(
+                method=RESTMethod.GET,
                 path_url = CONSTANTS.EXCHANGE_INFO_PATH_URL.format(self.chain, symbol),
                 is_auth_required = False,
                 new_url = True,
@@ -971,8 +970,8 @@ class TegroExchange(ExchangePyBase):
 
     async def _get_last_traded_price(self, trading_pair: str) -> float:
         symbol = await self.exchange_symbol_associated_to_pair(trading_pair=trading_pair)
-        resp_json = await self._api_requests(
-            method = "GET",
+        resp_json = await self._api_request(
+            method=RESTMethod.GET,
             path_url = CONSTANTS.TICKER_PRICE_CHANGE_PATH_URL.format(self.chain, symbol),
             is_auth_required = False,
             new_url = True,
@@ -982,8 +981,8 @@ class TegroExchange(ExchangePyBase):
         return float(resp_json["data"]["ticker"]["price"])
 
     async def _make_network_check_request(self):
-        await self._api_requests(
-            method = "GET",
+        await self._api_request(
+            method=RESTMethod.GET,
             path_url = self.check_network_request_path,
             is_auth_required = False,
             new_url = True,
@@ -991,8 +990,8 @@ class TegroExchange(ExchangePyBase):
         )
 
     async def _make_trading_rules_request(self) -> Any:
-        data = await self._api_requests(
-            method = "GET",
+        data = await self._api_request(
+            method=RESTMethod.GET,
             path_url = self.trading_rules_request_path.format(self.chain),
             is_auth_required = False,
             new_url = True,
@@ -1002,8 +1001,8 @@ class TegroExchange(ExchangePyBase):
         return exchange_info
 
     async def _make_trading_pairs_request(self) -> Any:
-        data = await self._api_requests(
-            method = "GET",
+        data = await self._api_request(
+            method=RESTMethod.GET,
             path_url = self.trading_pairs_request_path.format(self.chain),
             is_auth_required = False,
             new_url = True,
@@ -1011,66 +1010,3 @@ class TegroExchange(ExchangePyBase):
         ),
         exchange_info = data["data"]
         return exchange_info
-
-    async def _api_requests(self,
-                            method: str,
-                            path_url: str,
-                            params: Optional[Dict[str, Any]] = None,
-                            data: Optional[Dict[str, Any]] = None,
-                            is_auth_required: bool = False,
-                            new_url: bool = False,
-                            limit_id: Optional[str] = None) -> Union[Dict[str, Any], List[Any]]:
-        """
-        Sends an aiohttp request and waits for a response.
-        :param method: The HTTP method, e.g. get or post
-        :param path_url: The path url or the API end point
-        :param params: The query parameters of the API request
-        :param params: The body parameters of the API request
-        :param is_auth_required: Whether an authentication is required, when True the function will add encrypted
-        signature to the request.
-        :param limit_id: The id used for the API throttler. If not supplied, the `path_url` is used instead.
-        :returns A response in json format.
-        """
-        if new_url:
-            url = web_utils.rest_url(path_url, self.domain)
-        else:
-            url = web_utils.acc_url(path_url, self.domain)
-
-        try:
-            if is_auth_required:
-                headers = self.authenticator.get_auth_headers()
-            else:
-                headers = self.authenticator.header_for_authentication()
-
-            limit_id = limit_id or path_url
-            if method == "GET":
-                async with self._throttler.execute_task(limit_id):
-                    response = await self._shared_client.get(url, headers=headers, params=params)
-            elif method == "POST":
-                async with self._throttler.execute_task(limit_id):
-                    response = await self._shared_client.post(url, headers=headers, data=ujson.dumps(data))
-            else:
-                raise NotImplementedError(f"{method} HTTP Method not implemented. ")
-
-            data = await response.text()
-            if data == CONSTANTS.API_LIMIT_REACHED_ERROR_MESSAGE:
-                raise Exception(f"The exchange API request limit has been reached (original error '{data}')")
-
-            parsed_response = await response.json()
-
-        except ValueError as e:
-            self.logger().error(f"{str(e)}")
-            raise ValueError(f"Error authenticating request {method} {url}. Error: {str(e)}")
-        except Exception as e:
-            raise IOError(f"Error parsing data from {url}. Error: {str(e)}")
-        if response.status != 200 or (isinstance(parsed_response, dict) and not parsed_response.get("result", True)):
-            self.logger().error(f"Error fetching data from {url}. HTTP status is {response.status}. "
-                                f"Message: {parsed_response} "
-                                f"Params: {params} "
-                                f"Data: {data}")
-            raise Exception(f"Error fetching data from {url}. HTTP status is {response.status}. "
-                            f"Message: {parsed_response} "
-                            f"Params: {params} "
-                            f"Data: {data}")
-
-        return parsed_response

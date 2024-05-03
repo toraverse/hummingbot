@@ -27,18 +27,8 @@ def public_rest_url(path_url: str, domain: str = "tegro"):
     return base_url + path_url
 
 
-def rest_url(path_url: str, domain: str = "tegro"):
-    base_url = CONSTANTS.MAINNET_NEW_URL if domain == "tegro" else CONSTANTS.TESTNET_NEW_URL
-    return base_url + path_url
-
-
-def acc_url(path_url: str, domain: str = "tegro"):
-    base_url = CONSTANTS.MAINNET_ACC_URL if domain == "tegro" else CONSTANTS.TESTNET_ACC_URL
-    return base_url + path_url
-
-
 def private_rest_url(path_url: str, domain: str = "tegro"):
-    base_url = CONSTANTS.MAINNET_ACC_URL if domain == "tegro" else CONSTANTS.TESTNET_BASE_URL
+    base_url = CONSTANTS.TEGRO_BASE_URL if domain == "tegro" else CONSTANTS.TESTNET_BASE_URL
     return base_url + path_url
 
 
@@ -48,17 +38,20 @@ def wss_url(endpoint: str, domain: str = "tegro"):
 
 
 def build_api_factory(
-        throttler: Optional[AsyncThrottler] = None,
-        time_synchronizer: Optional[TimeSynchronizer] = None,
-        domain: str = CONSTANTS.DOMAIN,
-        time_provider: Optional[Callable] = None,
-        auth: Optional[AuthBase] = None, ) -> WebAssistantsFactory:
+    throttler: Optional[AsyncThrottler] = None,
+    time_synchronizer: Optional[TimeSynchronizer] = None,
+    domain=CONSTANTS.DEFAULT_DOMAIN,
+    time_provider: Optional[Callable] = None,
+    auth: Optional[AuthBase] = None,
+) -> WebAssistantsFactory:
     throttler = throttler or create_throttler()
     time_synchronizer = time_synchronizer or TimeSynchronizer()
-    time_provider = time_provider or (lambda: get_current_server_time(
-        throttler=throttler,
-        domain=domain,
-    ))
+    time_provider = time_provider or (
+        lambda: get_current_server_time(
+            throttler=throttler,
+            domain=domain
+        )
+    )
     api_factory = WebAssistantsFactory(
         throttler=throttler,
         auth=auth,
@@ -91,7 +84,7 @@ async def api_request(path: str,
     rest_assistant = await api_factory.get_rest_assistant()
 
     async with throttler.execute_task(limit_id=limit_id if limit_id else path):
-        url = private_rest_url(path, domain)
+        url = public_rest_url(path, domain)
 
         request = RESTRequest(
             method=method,
@@ -116,8 +109,9 @@ async def api_request(path: str,
 
 
 async def get_current_server_time(
-        throttler: Optional[AsyncThrottler] = None,
-        domain: str = CONSTANTS.DOMAIN,
+    throttler: Optional[AsyncThrottler] = None,
+
+    domain=CONSTANTS.DEFAULT_DOMAIN,
 ) -> float:
     throttler = throttler or create_throttler()
     server_time = time.time()

@@ -97,9 +97,9 @@ class TegroAPIOrderBookDataSource(OrderBookTrackerDataSource):
 
     async def _fetch_market_data(self):
         try:
-            return await self._connector._api_requests(
+            return await self._connector._api_request(
                 path_url = CONSTANTS.MARKET_LIST_PATH_URL.format(self._connector.chain),
-                method="GET",
+                method=RESTMethod.GET,
                 limit_id=CONSTANTS.MARKET_LIST_PATH_URL,
                 new_url = True,
                 is_auth_required=False
