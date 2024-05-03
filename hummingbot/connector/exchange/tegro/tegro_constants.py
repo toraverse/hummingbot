@@ -15,53 +15,52 @@ MAX_ORDER_ID_LEN = 32
 # Base URL
 # https://api.testnet.tegro.com/v2
 
-TEGRO_BASE_URL = "https://api.testnet.tegro.com/v2/"
-TESTNET_BASE_URL = "https://api.testnet.tegro.com/v2/"
-TEGRO_WS_URL = "wss://events.testnet.tegro.com/"
+TEGRO_BASE_URL = "https://api.tegro.com/api/"
+TESTNET_BASE_URL = "https://api.testnet.tegro.com/api/"
+TEGRO_WS_URL = "wss://api.tegro.com/api/v1/events/"
 TESTNET_WS_URL = "wss://events.testnet.tegro.com/"
 
-MAINNET_NEW_URL = "https://exchange.testnet.tegro.com/api/v1/"
-TESTNET_NEW_URL = "https://exchange.testnet.tegro.com/api/v1/"
+MAINNET_NEW_URL = "https://api.tegro.com/api/"
+TESTNET_NEW_URL = "https://api.testnet.tegro.com/api/"
 
-MAINNET_ACC_URL = "https://accounts.testnet.tegro.com/api/v1/"
-TESTNET_ACC_URL = "https://accounts.testnet.tegro.com/api/v1/"
+MAINNET_ACC_URL = "https://api.tegro.com/api/"
+TESTNET_ACC_URL = "https://api.testnet.tegro.com/api/"
 
-CHAIN_ID = 80001
+CHAIN_ID = 8453
 
 MAINNET_CHAIN_IDS = {
-    "polygon": 80001,
-    "arbitrum": 42161,
-    "optimism": 11155420,
+    "base": 8453,
 }
 
 TESTNET_CHAIN_IDS = {
-    "polygon": 80001,
     "arbitrum": 42161,
+    "polygon": 80002,
     "optimism": 11155420,
+    "base": 8453
 }
 
 PUBLIC_WS_ENDPOINT = "ws"
 
 # Public API endpoints or TegroClient function
-TICKER_PRICE_CHANGE_PATH_URL = "{}/market/{}"
-EXCHANGE_INFO_PATH_LIST_URL = "{}/market/list"
-EXCHANGE_INFO_PATH_URL = "{}/market/{}"
-PING_PATH_URL = "{}/market/list"  # TODO
-SNAPSHOT_PATH_URL = "market/orderbook/depth"
+TICKER_PRICE_CHANGE_PATH_URL = "v1/exchange/{}/market/{}"
+EXCHANGE_INFO_PATH_LIST_URL = "v1/exchange/{}/market/list"
+EXCHANGE_INFO_PATH_URL = "v1/exchange/{}/market/{}"
+PING_PATH_URL = "v1/exchange/{}/market/list"  # TODO
+SNAPSHOT_PATH_URL = "v1/trading/market/orderbook/depth"
 
 # REST API ENDPOINTS
-ACCOUNTS_PATH_URL = "{}/{}/portfolio"
-MARKET_LIST_PATH_URL = "{}/market/list"
-GENERATE_SIGN_URL = "market/orders/typedData/generate"
-TRADES_PATH_URL = "{}/market/trades"
-TRADES_FOR_ORDER_PATH_URL = "market/orders/trades/{}"
-ORDER_PATH_URL = "market/orders/place"
-CHAIN_LIST = "chain/list"
-CHARTS_TRADES = "{}/market/chart"
-ORDER_LIST = "market/orders/user/{}"
-CANCEL_ORDER_URL = "market/orders/cancel"
-CANCEL_ORDER_ALL_URL = "market/orders/cancelAll"
-TEGRO_USER_ORDER_PATH_URL = "market/orders/user/{}"
+ACCOUNTS_PATH_URL = "v1/accounts/{}/{}/portfolio"
+MARKET_LIST_PATH_URL = "v1/exchange/{}/market/list"
+GENERATE_SIGN_URL = "v1/trading/market/orders/typedData/generate"
+TRADES_PATH_URL = "v1/exchange/{}/market/trades"
+TRADES_FOR_ORDER_PATH_URL = "v1/trading/market/orders/trades/{}"
+ORDER_PATH_URL = "v1/trading/market/orders/place"
+CHAIN_LIST = "v1/exchange/chain/list"
+CHARTS_TRADES = "v1/exchange/{}/market/chart"
+ORDER_LIST = "v1/trading/market/orders/user/{}"
+CANCEL_ORDER_URL = "v1/trading/orders/cancel"
+CANCEL_ORDER_ALL_URL = "v1/trading/market/orders/cancelAll"
+TEGRO_USER_ORDER_PATH_URL = "v1/trading/market/orders/user/{}"
 
 
 WS_HEARTBEAT_TIME_INTERVAL = 30

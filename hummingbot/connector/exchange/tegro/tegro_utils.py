@@ -26,7 +26,7 @@ def validate_mainnet_exchange(value: str) -> Optional[str]:
     """
     Permissively interpret a string as a boolean
     """
-    valid_values = ('optimism', 'polygon', 'arbitrum')
+    valid_values = ('base')
     if value.lower() not in valid_values:
         return f"Invalid value, please choose value from {valid_values}"
 
@@ -35,7 +35,7 @@ def validate_testnet_exchange(value: str) -> Optional[str]:
     """
     Permissively interpret a string as a boolean
     """
-    valid_values = ('optimism', 'polygon')
+    valid_values = ('base', 'polygon', 'optimism', 'arbitrum')
     if value.lower() not in valid_values:
         return f"Invalid value, please choose value from {valid_values}"
 
@@ -124,7 +124,7 @@ class TegroConfigMap(BaseConnectorConfigMap):
     tegro_api_key: SecretStr = Field(
         default=...,
         client_data=ClientFieldData(
-            prompt=lambda cm: "Enter your Tegro API key",
+            prompt=lambda cm: "Enter your Public Wallet Address",
             is_secure=True,
             is_connect_key=True,
             prompt_on_new=True,
@@ -133,7 +133,7 @@ class TegroConfigMap(BaseConnectorConfigMap):
     tegro_api_secret: SecretStr = Field(
         default=...,
         client_data=ClientFieldData(
-            prompt=lambda cm: "Enter your Tegro API secret",
+            prompt=lambda cm: "Enter your Private Wallet Address",
             is_secure=True,
             is_connect_key=True,
             prompt_on_new=True,
@@ -142,7 +142,7 @@ class TegroConfigMap(BaseConnectorConfigMap):
     chain: str = Field(
         default=...,
         client_data=ClientFieldData(
-            prompt=lambda cm: "Enter your preferred chain. (polygon/optimism/arbitrum)",
+            prompt=lambda cm: "Enter your preferred chain. (base)",
             is_secure=False,
             is_connect_key=True,
             prompt_on_new=True,
@@ -175,7 +175,7 @@ class TegroTestnetConfigMap(BaseConnectorConfigMap):
     tegro_api_key: SecretStr = Field(
         default=...,
         client_data=ClientFieldData(
-            prompt=lambda cm: "Enter your tegro public key",
+            prompt=lambda cm: "Enter your Public Wallet Address",
             is_secure=True,
             is_connect_key=True,
             prompt_on_new=True,
@@ -184,7 +184,7 @@ class TegroTestnetConfigMap(BaseConnectorConfigMap):
     tegro_api_secret: SecretStr = Field(
         default=...,
         client_data=ClientFieldData(
-            prompt=lambda cm: "Enter your tegro secret API key",
+            prompt=lambda cm: "Enter your Private Wallet Address",
             is_secure=True,
             is_connect_key=True,
             prompt_on_new=True,
@@ -193,7 +193,7 @@ class TegroTestnetConfigMap(BaseConnectorConfigMap):
     chain: str = Field(
         default=...,
         client_data=ClientFieldData(
-            prompt=lambda cm: "Enter your preferred chain. (polygon/optimism)",
+            prompt=lambda cm: "Enter your preferred chain. (base/polygon/optimism/arbitrum)",
             is_secure=False,
             is_connect_key=True,
             prompt_on_new=True,
