@@ -26,6 +26,58 @@ MAINNET_CHAIN_IDS = {
     "base": 8453,
 }
 
+ABI = {
+    "approve": [
+        {
+            "name": "approve",
+            "stateMutability": "nonpayable",
+            "type": "function",
+            "inputs": [{
+                "internalType": "address",
+                "name": "spender",
+                "type": "address"
+            }, {
+                "internalType": "uint256",
+                "name": "value",
+                "type": "uint256"
+            }],
+            "outputs": [{
+                "internalType": "bool",
+                "name": "",
+                "type": "bool"
+            }]
+        },
+    ],
+    "allowance": [
+        {
+            "name": "allowance",
+            "stateMutability": "view",
+            "type": "function",
+            "inputs": [{
+                "internalType": "address",
+                "name": "owner",
+                "type": "address"
+            }, {
+                "internalType": "address",
+                "name": "spender",
+                "type": "address"
+            }],
+            "outputs": [{
+                "internalType": "uint256",
+                "name": "",
+                "type": "uint256"
+            }]
+        }
+    ]
+}
+
+Node_URLS = {
+    "arbitrum_sepolia": "https://sepolia-rollup.arbitrum.io/rpc",
+    "polygon_amoy": "https://rpc-amoy.polygon.technology",
+    "optimism_sepolia": "https://sepolia.optimism.io",
+    "base_mainnet": "https://mainnet.base.org"
+}
+
 TESTNET_CHAIN_IDS = {
     "arbitrum": 42161,
     "polygon": 80002,
@@ -52,7 +104,7 @@ ORDER_PATH_URL = "v1/trading/market/orders/place"
 CHAIN_LIST = "v1/exchange/chain/list"
 CHARTS_TRADES = "v1/exchange/{}/market/chart"
 ORDER_LIST = "v1/trading/market/orders/user/{}"
-CANCEL_ORDER_URL = "v1/trading/orders/cancel"
+CANCEL_ORDER_URL = "v1/trading/market/orders/cancel"
 CANCEL_ORDER_ALL_URL = "v1/trading/market/orders/cancelAll"
 TEGRO_USER_ORDER_PATH_URL = "v1/trading/market/orders/user/{}"
 
@@ -66,7 +118,7 @@ SIDE_BUY = "buy"
 SIDE_SELL = "sell"
 
 ORDER_STATE = {
-    "Pending": OrderState.PARTIALLY_FILLED,
+    "Pending": OrderState.FILLED,
     "Active": OrderState.OPEN,
     "Matched": OrderState.FILLED,
     "Completed": OrderState.COMPLETED,

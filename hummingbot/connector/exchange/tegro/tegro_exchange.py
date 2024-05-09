@@ -1,5 +1,4 @@
 import asyncio
-import math
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
@@ -8,6 +7,8 @@ import aiohttp
 import eth_account
 from bidict import bidict
 from eth_account import Account, messages
+from web3 import Web3
+from web3.middleware import geth_poa_middleware
 
 # from hummingbot.client.performance import PerformanceMetrics
 from hummingbot.connector.constants import s_decimal_NaN
@@ -52,12 +53,14 @@ class TegroExchange(ExchangePyBase):
                  tegro_api_key: str,
                  tegro_api_secret: str,
                  chain: str,
+                 rpc_url: str,
                  trading_pairs: Optional[List[str]] = None,
                  trading_required: bool = True,
                  domain: str = CONSTANTS.DEFAULT_DOMAIN
                  ):
         self.api_key = tegro_api_key
         self.secret_key = tegro_api_secret
+        self.node_url = rpc_url
         self.chain_id = chain
         self._api_factory = WebAssistantsFactory
         self._domain = domain
@@ -113,6 +116,15 @@ class TegroExchange(ExchangePyBase):
         else:
             chain = CONSTANTS.CHAIN_ID
         return chain
+
+    @property
+    def rpc_node_url(self):
+        url = CONSTANTS.Node_URLS[self.node_url]
+        return url
+
+    @property
+    def web_provider(self):
+        return Web3(Web3.HTTPProvider(self.rpc_node_url))
 
     @property
     def client_order_id_prefix(self):
@@ -276,6 +288,74 @@ class TegroExchange(ExchangePyBase):
             price=price))
         return order_id
 
+    def get_allowance(self, exchange_con_addr, con_addr, addr):
+        w3 = Web3(Web3.HTTPProvider(self.rpc_node_url))
+        w3.middleware_onion.inject(geth_poa_middleware, layer=0)
+        allowance_abi = CONSTANTS.ABI["allowance"]
+        contract = w3.eth.contract(con_addr, abi = allowance_abi)
+        try:
+            function_call = contract.functions.allowance(addr, exchange_con_addr)
+            transaction = function_call.call({
+                "abi": allowance_abi,
+                "address": con_addr,
+                "args": [addr, exchange_con_addr],
+                "functionName": "allowance"
+            })
+            return transaction
+        except Exception as e:
+            self.logger("Error occurred while getting allowance:", e)
+            return None
+
+    async def approve_allowance(
+        self,
+        exchange_con_addr: str,
+        is_buy: bool,
+        order_amount: Decimal
+    ):
+        w3 = Web3(Web3.HTTPProvider(self.rpc_node_url))
+        w3.middleware_onion.inject(geth_poa_middleware, layer=0)
+        approve_abi = CONSTANTS.ABI["approve"]
+        # allowance_abi = CONSTANTS.ABI["allowance"]
+        data = []
+        tokens = await self.tokens_info()
+        for t in tokens:
+            if t["type"] == "base":
+                data.append(t)
+            elif t["type"] == "quote":
+                data.append(t)
+        if is_buy:
+            con_addr = Web3.to_checksum_address(data[0]["address"])
+            bal = Decimal(data[0]["balance"])
+            decimal = Decimal(data[0]["decimal"])
+        else:
+            con_addr = Web3.to_checksum_address(data[1]["address"])
+            bal = Decimal(data[1]["balance"])
+            decimal = Decimal(data[1]["decimal"])
+        addr = Web3.to_checksum_address(self.api_key)
+        factor = Decimal(10) ** decimal
+        contract = w3.eth.contract(con_addr, abi=approve_abi)
+        avai_allowance: Decimal = self.get_allowance(exchange_con_addr, con_addr, addr)
+        approved_amount = bal * factor
+        allowance = avai_allowance / factor
+        # Get nonce
+        nonce = w3.eth.get_transaction_count(addr)
+        # Prepare transaction parameters
+        tx_params = {
+            "gas": 2000000,
+            "nonce": nonce
+        }
+        amount = round(approved_amount)
+        if order_amount > allowance:
+            try:
+                approval_contract = contract.functions.approve(exchange_con_addr, amount).build_transaction(tx_params)
+                signed_tx = w3.eth.account.sign_transaction(approval_contract, self.secret_key)
+                txn_hash = w3.eth.send_raw_transaction(signed_tx.rawTransaction)
+                txn_receipt = w3.eth.wait_for_transaction_receipt(txn_hash)
+                return txn_receipt
+            except Exception as e:
+                self.logger("Error occurred while approving allowance:", e)
+                return None
+
     async def _place_order(self,
                            order_id: str,
                            trading_pair: str,
@@ -285,6 +365,10 @@ class TegroExchange(ExchangePyBase):
                            price: Decimal,
                            **kwargs) -> Tuple[str, float]:
         transaction_data = await self.generate_typed_data(amount, order_type, price, trade_type, trading_pair)
+        order_amount = amount
+        exchange_con_addr = Web3.to_checksum_address(transaction_data["data"]["sign_data"]["domain"]["verifyingContract"])
+        is_buy = transaction_data["data"]["sign_data"]["message"]["isBuy"]
+        await self.approve_allowance(exchange_con_addr, is_buy, order_amount)
         pr = int(transaction_data["data"]["sign_data"]["message"]["price"])
         vc = transaction_data["data"]["sign_data"]["domain"]["verifyingContract"]
         am = int(transaction_data["data"]["sign_data"]["message"]["totalQuantity"])
@@ -349,11 +433,11 @@ class TegroExchange(ExchangePyBase):
         }
         try:
             data = await self._api_request(
-                path_url=CONSTANTS.ORDER_PATH_URL,
-                method=RESTMethod.POST,
-                data=api_params,
-                is_auth_required=False,
-                limit_id=CONSTANTS.ORDER_PATH_URL,
+                path_url = CONSTANTS.ORDER_PATH_URL,
+                method = RESTMethod.POST,
+                data = api_params,
+                is_auth_required = False,
+                limit_id = CONSTANTS.ORDER_PATH_URL,
             )
             o_id = str(data["data"]["orderId"])
             transact_time = tegro_utils.datetime_val_or_now(data["data"]["timestamp"], on_error_return_now=True).timestamp(),
@@ -375,11 +459,11 @@ class TegroExchange(ExchangePyBase):
             "market_symbol": await self.exchange_symbol_associated_to_pair(trading_pair=trading_pair),
             "side": side_str,
             "wallet_address": self.api_key,
-            "amount": math.floor(amount),
+            "amount": float(amount),
         }
         if order_type is OrderType.LIMIT or order_type is OrderType.LIMIT_MAKER:
-            price_str = math.floor(price)
-            params["price"] = price_str
+            price_str = price
+            params["price"] = float(price_str)
         data = await self._api_request(
             path_url=CONSTANTS.GENERATE_SIGN_URL,
             method=RESTMethod.POST,
@@ -399,8 +483,8 @@ class TegroExchange(ExchangePyBase):
         signature = sign.signature.hex()
         ex_oid = await tracked_order.get_exchange_order_id()
         params = {
-            "ChainID": self.chain,
-            "OrderID": ex_oid,
+            "chain_id": self.chain,
+            "id": ex_oid,
             "Signature": signature,
         }
         try:
@@ -518,8 +602,8 @@ class TegroExchange(ExchangePyBase):
         for rule in filter(tegro_utils.is_exchange_information_valid, trading_pair_rules):
             try:
                 trading_pair = await self.trading_pair_associated_to_exchange_symbol(symbol=rule.get("symbol"))
-                min_order_size = Decimal(0.01)
-                min_amount_inc = Decimal(0.1)
+                min_order_size = Decimal(0.0001)
+                min_amount_inc = Decimal(0.0001)
                 retval.append(
                     TradingRule(trading_pair,
                                 min_order_size=min_order_size,
@@ -870,6 +954,33 @@ class TegroExchange(ExchangePyBase):
         )
 
         return order_update
+
+    async def tokens_info(self):
+        account_info = await self._api_request(
+            method=RESTMethod.GET,
+            path_url=CONSTANTS.ACCOUNTS_PATH_URL.format(self.chain, self.api_key),
+            limit_id=CONSTANTS.ACCOUNTS_PATH_URL,
+            new_url=False,
+            is_auth_required=False)
+
+        data = []
+
+        for dats in (account_info["data"]):
+            symbol = dats["symbol"]
+            address = dats["address"]
+            type = dats["type"]
+            balance = dats["balance"]
+            decimal = dats["decimal"]
+            token_data = {
+                "symbol": symbol,
+                "address": address,
+                "type": type,
+                "balance": balance,
+                "decimal": decimal
+            }
+            data.append(token_data)
+
+        return data
 
     async def _update_balances(self):
         local_asset_names = set(self._account_balances.keys())
