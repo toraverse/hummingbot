@@ -310,27 +310,25 @@ class TegroExchange(ExchangePyBase):
         self,
         exchange_con_addr: str,
         is_buy: bool,
-        order_amount: Decimal
+        order_amount: Decimal,
+        base_token: str,
+        quote_token: str
     ):
         w3 = Web3(Web3.HTTPProvider(self.rpc_node_url))
         w3.middleware_onion.inject(geth_poa_middleware, layer=0)
         approve_abi = CONSTANTS.ABI["approve"]
         # allowance_abi = CONSTANTS.ABI["allowance"]
-        data = []
+        data = {}
         tokens = await self.tokens_info()
+        ty = "quote" if is_buy else "base"
         for t in tokens:
-            if t["type"] == "base":
-                data.append(t)
-            elif t["type"] == "quote":
-                data.append(t)
-        if is_buy:
-            con_addr = Web3.to_checksum_address(data[0]["address"])
-            bal = Decimal(data[0]["balance"])
-            decimal = Decimal(data[0]["decimal"])
-        else:
-            con_addr = Web3.to_checksum_address(data[1]["address"])
-            bal = Decimal(data[1]["balance"])
-            decimal = Decimal(data[1]["decimal"])
+            if t["address"] == base_token:
+                data["base"] = t
+            elif t["address"] == quote_token:
+                data["quote"] = t
+        con_addr = Web3.to_checksum_address(data[ty]["address"])
+        bal = Decimal(data[ty]["balance"])
+        decimal = Decimal(data[ty]["decimal"])
         addr = Web3.to_checksum_address(self.api_key)
         factor = Decimal(10) ** decimal
         contract = w3.eth.contract(con_addr, abi=approve_abi)
@@ -368,7 +366,9 @@ class TegroExchange(ExchangePyBase):
         order_amount = amount
         exchange_con_addr = Web3.to_checksum_address(transaction_data["data"]["sign_data"]["domain"]["verifyingContract"])
         is_buy = transaction_data["data"]["sign_data"]["message"]["isBuy"]
-        await self.approve_allowance(exchange_con_addr, is_buy, order_amount)
+        base_token = transaction_data["data"]["sign_data"]["message"]["baseToken"]
+        quote_token = transaction_data["data"]["sign_data"]["message"]["quoteToken"]
+        await self.approve_allowance(exchange_con_addr, is_buy, order_amount, base_token, quote_token)
         pr = int(transaction_data["data"]["sign_data"]["message"]["price"])
         vc = transaction_data["data"]["sign_data"]["domain"]["verifyingContract"]
         am = int(transaction_data["data"]["sign_data"]["message"]["totalQuantity"])
