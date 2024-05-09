@@ -26,7 +26,16 @@ def validate_mainnet_exchange(value: str) -> Optional[str]:
     """
     Permissively interpret a string as a boolean
     """
-    valid_values = ('base')
+    valid_values = ('base/')
+    if value.lower() not in valid_values:
+        return f"Invalid value, please choose value from {valid_values}"
+
+
+def validate_mainnet_rpc(value: str) -> Optional[str]:
+    """
+    Permissively interpret a string as a boolean
+    """
+    valid_values = ('base_mainnet')
     if value.lower() not in valid_values:
         return f"Invalid value, please choose value from {valid_values}"
 
@@ -36,6 +45,15 @@ def validate_testnet_exchange(value: str) -> Optional[str]:
     Permissively interpret a string as a boolean
     """
     valid_values = ('base', 'polygon', 'optimism', 'arbitrum')
+    if value.lower() not in valid_values:
+        return f"Invalid value, please choose value from {valid_values}"
+
+
+def validate_testnet_rpc(value: str) -> Optional[str]:
+    """
+    Permissively interpret a string as a boolean
+    """
+    valid_values = ('base_mainnet', 'polygon_amoy', 'optimism_sepolia', 'arbitrum_sepolia')
     if value.lower() not in valid_values:
         return f"Invalid value, please choose value from {valid_values}"
 
@@ -148,12 +166,30 @@ class TegroConfigMap(BaseConnectorConfigMap):
             prompt_on_new=True,
         )
     )
+    rpc_url: str = Field(
+        default=...,
+        client_data=ClientFieldData(
+            prompt=lambda cm: "Enter your preferred RPC URL. (arbitrum_sepolia/polygon_amoy/optimism_sepolia/base_mainnet)",
+            is_secure=False,
+            is_connect_key=True,
+            prompt_on_new=True,
+        )
+    )
 
     @validator("chain", pre=True)
     def validate_exchange(cls, v: str):
         """Used for client-friendly error output."""
         if isinstance(v, str):
             ret = validate_mainnet_exchange(v)
+            if ret is not None:
+                raise ValueError(ret)
+        return v
+
+    @validator("rpc_url", pre=True)
+    def validate_rpc(cls, v: str):
+        """Used for client-friendly error output."""
+        if isinstance(v, str):
+            ret = validate_mainnet_rpc(v)
             if ret is not None:
                 raise ValueError(ret)
         return v
@@ -199,12 +235,30 @@ class TegroTestnetConfigMap(BaseConnectorConfigMap):
             prompt_on_new=True,
         )
     )
+    rpc_url: str = Field(
+        default=...,
+        client_data=ClientFieldData(
+            prompt=lambda cm: "Enter your preferred RPC URL. (arbitrum_sepolia/polygon_amoy/optimism_sepolia/base_mainnet)",
+            is_secure=False,
+            is_connect_key=True,
+            prompt_on_new=True,
+        )
+    )
 
     @validator("chain", pre=True)
     def validate_exchange(cls, v: str):
         """Used for client-friendly error output."""
         if isinstance(v, str):
             ret = validate_testnet_exchange(v)
+            if ret is not None:
+                raise ValueError(ret)
+        return v
+
+    @validator("rpc_url", pre=True)
+    def validate_rpc(cls, v: str):
+        """Used for client-friendly error output."""
+        if isinstance(v, str):
+            ret = validate_testnet_rpc(v)
             if ret is not None:
                 raise ValueError(ret)
         return v
