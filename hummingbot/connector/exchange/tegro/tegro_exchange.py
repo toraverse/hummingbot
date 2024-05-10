@@ -160,11 +160,10 @@ class TegroExchange(ExchangePyBase):
     async def get_all_pairs_prices(self) -> List[Dict[str, str]]:
         results = {}
         data = await self._api_request(
-            method="GET",
+            method=RESTMethod.GET,
             path_url=CONSTANTS.EXCHANGE_INFO_PATH_LIST_URL.format(self.chain),
             limit_id=CONSTANTS.EXCHANGE_INFO_PATH_LIST_URL,
             is_auth_required=False,
-            new_url = True,
         )
 
         pairs_prices = data["data"]
@@ -1085,27 +1084,25 @@ class TegroExchange(ExchangePyBase):
             method=RESTMethod.GET,
             path_url = CONSTANTS.TICKER_PRICE_CHANGE_PATH_URL.format(self.chain, symbol),
             is_auth_required = False,
-            new_url = True,
             limit_id = CONSTANTS.TICKER_PRICE_CHANGE_PATH_URL
         )
 
         return float(resp_json["data"]["ticker"]["price"])
 
     async def _make_network_check_request(self):
-        await self._api_request(
+        status = await self._api_request(
             method=RESTMethod.GET,
             path_url = self.check_network_request_path,
             is_auth_required = False,
-            new_url = True,
             limit_id = CONSTANTS.PING_PATH_URL
         )
+        return status
 
     async def _make_trading_rules_request(self) -> Any:
         data = await self._api_request(
             method=RESTMethod.GET,
             path_url = self.trading_rules_request_path.format(self.chain),
             is_auth_required = False,
-            new_url = True,
             limit_id = CONSTANTS.EXCHANGE_INFO_PATH_LIST_URL
         )
         exchange_info = data["data"]
@@ -1116,7 +1113,6 @@ class TegroExchange(ExchangePyBase):
             method=RESTMethod.GET,
             path_url = self.trading_pairs_request_path.format(self.chain),
             is_auth_required = False,
-            new_url = True,
             limit_id = CONSTANTS.EXCHANGE_INFO_PATH_LIST_URL
         ),
         exchange_info = data["data"]
