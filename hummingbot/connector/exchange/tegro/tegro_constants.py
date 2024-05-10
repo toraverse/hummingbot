@@ -91,7 +91,7 @@ PUBLIC_WS_ENDPOINT = "ws"
 TICKER_PRICE_CHANGE_PATH_URL = "v1/exchange/{}/market/{}"
 EXCHANGE_INFO_PATH_LIST_URL = "v1/exchange/{}/market/list"
 EXCHANGE_INFO_PATH_URL = "v1/exchange/{}/market/{}"
-PING_PATH_URL = "v1/trading/health"  # TODO
+PING_PATH_URL = "v1/exchange/chain/list"  # TODO
 SNAPSHOT_PATH_URL = "v1/trading/market/orderbook/depth"
 
 # REST API ENDPOINTS
