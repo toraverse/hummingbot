@@ -28,6 +28,7 @@ class TegroUserStreamDataSourceUnitTests(unittest.TestCase):
         cls.domain = CONSTANTS.DOMAIN
 
         cls.chain_id = "polygon"
+        cls.rpc_url = "polygon_amoy"
         cls.api_key = "TEST_API_KEY"  # noqa: mock
         cls.secret_key = "TEST_SECRET_KEY"  # noqa: mock
 

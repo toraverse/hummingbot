@@ -30,6 +30,7 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
         cls.quote_asset = "USDT"
         cls.tegro_api_key = "",
         cls.chain = ""
+        cls.rpc_url = ""
         cls.trading_pair = f"{cls.base_asset}-{cls.quote_asset}"
         cls.ex_trading_pair = cls.base_asset + cls.quote_asset
         cls.domain = "tegro"
@@ -46,6 +47,7 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
             tegro_api_key="",
             tegro_api_secret="",
             chain="polygon",
+            rpc_url = "polygon_amoy",
             trading_pairs=[],
             trading_required=False,
             domain=self.domain)

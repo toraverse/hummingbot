@@ -34,7 +34,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
 
     @property
     def network_status_url(self):
-        url = web_utils.rest_url(CONSTANTS.CHAIN_LIST, domain=self.exchange._domain)
+        url = web_utils.rest_url(CONSTANTS.PING_PATH_URL, domain=self.exchange._domain)
         return url
 
     @property
@@ -317,9 +317,9 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
     def expected_trading_rule(self):
         return TradingRule(
             trading_pair=self.trading_pair,
-            min_order_size= Decimal(0.1),
+            min_order_size= Decimal(0.0001),
             min_price_increment=Decimal(0.280),
-            min_base_amount_increment=Decimal(1)
+            min_base_amount_increment=Decimal(0.0001)
         )
 
     @property
@@ -365,6 +365,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
         return TegroExchange(
             client_config_map=client_config_map,
             chain="polygon",  # noqa: mock
+            rpc_url="polygon_amoy",  # noqa: mock
             tegro_api_key="testAPIKey",  # noqa: mock
             tegro_api_secret="testSecret",  # noqa: mock
             trading_pairs=[self.trading_pair],

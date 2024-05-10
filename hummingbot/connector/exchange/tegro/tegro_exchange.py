@@ -140,7 +140,7 @@ class TegroExchange(ExchangePyBase):
 
     @property
     def check_network_request_path(self):
-        return CONSTANTS.CHAIN_LIST
+        return CONSTANTS.PING_PATH_URL
 
     @property
     def trading_pairs(self):
@@ -1097,7 +1097,7 @@ class TegroExchange(ExchangePyBase):
             path_url = self.check_network_request_path,
             is_auth_required = False,
             new_url = True,
-            limit_id = CONSTANTS.CHAIN_LIST
+            limit_id = CONSTANTS.PING_PATH_URL
         )
 
     async def _make_trading_rules_request(self) -> Any:
