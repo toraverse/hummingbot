@@ -36,6 +36,19 @@ class TegroAPIOrderBookDataSource(OrderBookTrackerDataSource):
         self._domain: Optional[str] = domain
         self._api_factory = api_factory
 
+    @property
+    def chain(self):
+        if self._connector.chain_id is not None and self._domain == "tegro":
+            if self._connector.chain_id in CONSTANTS.MAINNET_CHAIN_IDS.keys():
+                chain = CONSTANTS.MAINNET_CHAIN_IDS[self._connector.chain_id]
+            else:
+                chain = CONSTANTS.CHAIN_ID
+        elif self._connector.chain_id is not None and self._domain == "tegro_testnet":
+            chain = CONSTANTS.TESTNET_CHAIN_IDS[self._connector.chain_id]
+        else:
+            chain = CONSTANTS.CHAIN_ID
+        return chain
+
     @staticmethod
     async def trading_pair_associated_to_exchange_symbol(symbol: str) -> str:
         symbol_map = await TegroExchange._initialize_trading_pair_symbol_map()
@@ -56,7 +69,7 @@ class TegroAPIOrderBookDataSource(OrderBookTrackerDataSource):
         """
 
         params = {
-            "chain_id": self._connector.chain,
+            "chain_id": self.chain,
             "market_symbol": await self._connector.exchange_symbol_associated_to_pair(trading_pair=trading_pair),
         }
 
@@ -118,7 +131,7 @@ class TegroAPIOrderBookDataSource(OrderBookTrackerDataSource):
             new_symbol = f"{symb[0]}-{symb[1]}"
             if new_symbol in self._trading_pairs:
                 address = str(market["base_contract_address"])
-                param.append(f"{CONSTANTS.CHAIN_ID}/{address}")
+                param.append(f"{self.chain}/{address}")
         return param[0]
 
     async def _connected_websocket_assistant(self) -> WSAssistant:

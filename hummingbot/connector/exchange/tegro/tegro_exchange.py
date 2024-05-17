@@ -110,7 +110,10 @@ class TegroExchange(ExchangePyBase):
     @property
     def chain(self):
         if self.chain_id is not None and self.domain == "tegro":
-            chain = CONSTANTS.MAINNET_CHAIN_IDS[self.chain_id]
+            if self.chain_id in CONSTANTS.MAINNET_CHAIN_IDS.keys():
+                chain = CONSTANTS.MAINNET_CHAIN_IDS[self.chain_id]
+            else:
+                chain = CONSTANTS.CHAIN_ID
         elif self.chain_id is not None and self.domain == "tegro_testnet":
             chain = CONSTANTS.TESTNET_CHAIN_IDS[self.chain_id]
         else:
@@ -714,13 +717,12 @@ class TegroExchange(ExchangePyBase):
         order_update = self._create_order_update_with_order_status_data(order_status=raw_msg, order=tracked_order)
         self._order_tracker.process_order_update(order_update=order_update)
 
-    async def _users_orders(self, trading_pair: str):
-        await self._initialize_verified_market(trading_pair)
+    async def _users_orders(self):
+        await self._initialize_verified_market()
         user_orders = await self._api_get(
             path_url=CONSTANTS.ORDER_LIST.format(self.api_key),
             params={"chain_id": self.chain,
-                    "market_id": f'{self._market["data"]["id"]}',
-                    "statuses": "matched"},
+                    "market_id": f'{self._market["data"]["id"]}'},
             limit_id=CONSTANTS.ORDER_LIST,
             is_auth_required=False,
             headers={"Content-Type": "application/json"}
@@ -729,8 +731,9 @@ class TegroExchange(ExchangePyBase):
 
     async def _user_trades(self):
         # Gather user orders for each trading pair concurrently
-        tasks = [self._users_orders(trading_pair=trading_pair) for trading_pair in self.trading_pairs]
-        orders_results = await safe_gather(*tasks, return_exceptions=True)
+        tasks = await self._users_orders()
+        orders_results = []
+        orders_results.append(tasks)
 
         # Collect order IDs from the results
         order_ids = []
@@ -760,7 +763,8 @@ class TegroExchange(ExchangePyBase):
             # Organize trades data by trading pair
             user_trades = []
             for trades_data in trades_results:
-                user_trades.append(trades_data[0])
+                if trades_data is not None and len(trades_data) > 0:
+                    user_trades.append(trades_data[0])
 
             return user_trades
 
@@ -857,7 +861,6 @@ class TegroExchange(ExchangePyBase):
         if order.exchange_order_id is not None:
             exchange_order_id = str(order.exchange_order_id)
             trading_pair = await self.exchange_symbol_associated_to_pair(trading_pair=order.trading_pair)
-            await self._initialize_verified_market(trading_pair=trading_pair)
             all_fills_response = await self._api_request(
                 method=RESTMethod.GET,
                 path_url=CONSTANTS.TRADES_FOR_ORDER_PATH_URL.format(order.exchange_order_id),
@@ -893,7 +896,7 @@ class TegroExchange(ExchangePyBase):
         return trade_updates
 
     async def _request_order_status(self, tracked_order: InFlightOrder) -> OrderUpdate:
-        await self._initialize_verified_market(trading_pair=tracked_order.trading_pair)
+        await self._initialize_verified_market()
 
         # Fetch the list of orders from the API
         orders = await self._fetch_orders()
@@ -1061,13 +1064,17 @@ class TegroExchange(ExchangePyBase):
             )
             raise
 
-    async def _initialize_verified_market(self, trading_pair: str):
-        sym = trading_pair.replace('_', '-')
-        symbol = await self.exchange_symbol_associated_to_pair(trading_pair=sym)
+    async def _initialize_verified_market(self):
+        await self._initialize_market_list()
+        id = []
+        for market in self._markets["data"]:
+            if market["chain_id"] == self.chain:
+                id.append(market)
         try:
             self._market = await self._api_request(
                 method=RESTMethod.GET,
-                path_url = CONSTANTS.EXCHANGE_INFO_PATH_URL.format(self.chain, symbol),
+                path_url = CONSTANTS.EXCHANGE_INFO_PATH_URL.format(
+                    self.chain, id[0]["id"]),
                 is_auth_required = False,
                 new_url = True,
                 limit_id = CONSTANTS.EXCHANGE_INFO_PATH_URL,
@@ -1080,14 +1087,14 @@ class TegroExchange(ExchangePyBase):
 
     async def _get_last_traded_price(self, trading_pair: str) -> float:
         symbol = await self.exchange_symbol_associated_to_pair(trading_pair=trading_pair)
-        resp_json = await self._api_request(
-            method=RESTMethod.GET,
-            path_url = CONSTANTS.TICKER_PRICE_CHANGE_PATH_URL.format(self.chain, symbol),
-            is_auth_required = False,
-            limit_id = CONSTANTS.TICKER_PRICE_CHANGE_PATH_URL
-        )
-
-        return float(resp_json["data"]["ticker"]["price"])
+        if symbol is not None:
+            resp_json = await self._api_request(
+                method=RESTMethod.GET,
+                path_url = CONSTANTS.TICKER_PRICE_CHANGE_PATH_URL.format(self.chain, self._market["data"]["id"]),
+                is_auth_required = False,
+                limit_id = CONSTANTS.TICKER_PRICE_CHANGE_PATH_URL
+            )
+            return float(resp_json["data"]["ticker"]["price"])
 
     async def _make_network_check_request(self):
         status = await self._api_request(
