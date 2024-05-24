@@ -26,7 +26,7 @@ def validate_mainnet_exchange(value: str) -> Optional[str]:
     """
     Permissively interpret a string as a boolean
     """
-    valid_values = ('base/')
+    valid_values = ('base')
     if value.lower() not in valid_values:
         return f"Invalid value, please choose value from {valid_values}"
 
@@ -53,7 +53,7 @@ def validate_testnet_rpc(value: str) -> Optional[str]:
     """
     Permissively interpret a string as a boolean
     """
-    valid_values = ('base_mainnet', 'polygon_amoy', 'optimism_sepolia', 'arbitrum_sepolia')
+    valid_values = ('base_sepolia', 'polygon_amoy', 'optimism_sepolia', 'arbitrum_sepolia')
     if value.lower() not in valid_values:
         return f"Invalid value, please choose value from {valid_values}"
 
@@ -160,7 +160,7 @@ class TegroConfigMap(BaseConnectorConfigMap):
     chain: str = Field(
         default=...,
         client_data=ClientFieldData(
-            prompt=lambda cm: "Enter your preferred chain. (base)",
+            prompt=lambda cm: "Enter your preferred chain. (base/ )",
             is_secure=False,
             is_connect_key=True,
             prompt_on_new=True,
@@ -169,7 +169,7 @@ class TegroConfigMap(BaseConnectorConfigMap):
     rpc_url: str = Field(
         default=...,
         client_data=ClientFieldData(
-            prompt=lambda cm: "Enter your preferred RPC URL. (arbitrum_sepolia/polygon_amoy/optimism_sepolia/base_mainnet)",
+            prompt=lambda cm: "Enter your preferred RPC URL. (base_mainnet/ )",
             is_secure=False,
             is_connect_key=True,
             prompt_on_new=True,
@@ -238,7 +238,7 @@ class TegroTestnetConfigMap(BaseConnectorConfigMap):
     rpc_url: str = Field(
         default=...,
         client_data=ClientFieldData(
-            prompt=lambda cm: "Enter your preferred RPC URL. (arbitrum_sepolia/polygon_amoy/optimism_sepolia/base_mainnet)",
+            prompt=lambda cm: "Enter your preferred RPC URL. (base_sepolia/polygon_amoy/optimism_sepolia/arbitrum_sepolia)",
             is_secure=False,
             is_connect_key=True,
             prompt_on_new=True,

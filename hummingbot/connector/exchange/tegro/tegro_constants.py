@@ -75,11 +75,14 @@ Node_URLS = {
     "arbitrum_sepolia": "https://sepolia-rollup.arbitrum.io/rpc",
     "polygon_amoy": "https://rpc-amoy.polygon.technology",
     "optimism_sepolia": "https://sepolia.optimism.io",
-    "base_mainnet": "https://mainnet.base.org"
+    "base_mainnet": "https://mainnet.base.org",
+    "base_sepolia": "https://sepolia.base.org"
 }
 
 TESTNET_CHAIN_IDS = {
     "polygon": 80002,
+    "arbitrum": 421614,
+    "base": 84532,
     "optimism": 11155420
 }
 
