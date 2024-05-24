@@ -18,7 +18,7 @@ MAX_ORDER_ID_LEN = 32
 TEGRO_BASE_URL = "https://api.tegro.com/api/"
 TESTNET_BASE_URL = "https://api.testnet.tegro.com/api/"
 TEGRO_WS_URL = "wss://api.tegro.com/api/v1/events/"
-TESTNET_WS_URL = "wss://events.testnet.tegro.com/"
+TESTNET_WS_URL = "wss://api.testnet.tegro.com/api/v1/events/"
 
 CHAIN_ID = 8453
 
@@ -79,10 +79,8 @@ Node_URLS = {
 }
 
 TESTNET_CHAIN_IDS = {
-    "arbitrum": 42161,
     "polygon": 80002,
-    "optimism": 11155420,
-    "base": 8453
+    "optimism": 11155420
 }
 
 PUBLIC_WS_ENDPOINT = "ws"
@@ -97,6 +95,7 @@ SNAPSHOT_PATH_URL = "v1/trading/market/orderbook/depth"
 # REST API ENDPOINTS
 ACCOUNTS_PATH_URL = "v1/accounts/{}/{}/portfolio"
 MARKET_LIST_PATH_URL = "v1/exchange/{}/market/list"
+GENERATE_ORDER_URL = "v1/trading/market/orders/typedData/generateCancelOrder"
 GENERATE_SIGN_URL = "v1/trading/market/orders/typedData/generate"
 TRADES_PATH_URL = "v1/exchange/{}/market/trades"
 TRADES_FOR_ORDER_PATH_URL = "v1/trading/market/orders/trades/{}"
@@ -232,6 +231,12 @@ RATE_LIMITS = [
     ),
     RateLimit(
         limit_id=GENERATE_SIGN_URL,
+        limit=NO_LIMIT,
+        time_interval=SECOND,
+        linked_limits=[LinkedLimitWeightPair(TICKER_PRICE_CHANGE_PATH_URL)]
+    ),
+    RateLimit(
+        limit_id=GENERATE_ORDER_URL,
         limit=NO_LIMIT,
         time_interval=SECOND,
         linked_limits=[LinkedLimitWeightPair(TICKER_PRICE_CHANGE_PATH_URL)]

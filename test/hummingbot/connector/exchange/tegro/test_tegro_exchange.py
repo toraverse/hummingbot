@@ -26,10 +26,10 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
     @classmethod
     def setUpClass(cls) -> None:
         super().setUpClass()
-        cls.chain = ""
-        cls.rpc_url = ""
+        cls.chain = "base"
+        cls.rpc_url = "base_mainnet"
         cls.base_asset = "WETH"
-        cls.quote_asset = "USDT"
+        cls.quote_asset = "USDC"
         cls.market_id = ""
         cls.trading_pair = f"{cls.base_asset}-{cls.quote_asset}"
         cls.tegro_api_key = "somePassPhrase"

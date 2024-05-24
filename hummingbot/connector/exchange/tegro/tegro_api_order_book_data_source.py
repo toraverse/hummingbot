@@ -132,7 +132,9 @@ class TegroAPIOrderBookDataSource(OrderBookTrackerDataSource):
             if new_symbol in self._trading_pairs:
                 address = str(market["base_contract_address"])
                 param.append(f"{self.chain}/{address}")
-        return param[0]
+                break
+        addr = param[0]
+        return addr
 
     async def _connected_websocket_assistant(self) -> WSAssistant:
         ws: WSAssistant = await self._api_factory.get_ws_assistant()
