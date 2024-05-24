@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 import aiohttp
 import eth_account
 from bidict import bidict
-from eth_account import Account, messages
 from web3 import Web3
 from web3.middleware import geth_poa_middleware
 
@@ -109,12 +108,12 @@ class TegroExchange(ExchangePyBase):
 
     @property
     def chain(self):
-        if self.chain_id is not None and self.domain == "tegro":
+        if self.chain_id is not None and self._domain == "tegro":
             if self.chain_id in CONSTANTS.MAINNET_CHAIN_IDS.keys():
                 chain = CONSTANTS.MAINNET_CHAIN_IDS[self.chain_id]
             else:
                 chain = CONSTANTS.CHAIN_ID
-        elif self.chain_id is not None and self.domain == "tegro_testnet":
+        elif self.chain_id is not None and self._domain == "tegro_testnet":
             chain = CONSTANTS.TESTNET_CHAIN_IDS[self.chain_id]
         else:
             chain = CONSTANTS.CHAIN_ID
@@ -371,48 +370,11 @@ class TegroExchange(ExchangePyBase):
         base_token = transaction_data["data"]["sign_data"]["message"]["baseToken"]
         quote_token = transaction_data["data"]["sign_data"]["message"]["quoteToken"]
         await self.approve_allowance(exchange_con_addr, is_buy, order_amount, base_token, quote_token)
-        pr = int(transaction_data["data"]["sign_data"]["message"]["price"])
-        vc = transaction_data["data"]["sign_data"]["domain"]["verifyingContract"]
-        am = int(transaction_data["data"]["sign_data"]["message"]["totalQuantity"])
-        isb = transaction_data["data"]["sign_data"]["message"]["isBuy"]
-        sa = int(transaction_data["data"]["sign_data"]["message"]["salt"])
-        bt = transaction_data["data"]["sign_data"]["message"]["baseToken"]
-        qt = transaction_data["data"]["sign_data"]["message"]["quoteToken"]
-        ma = transaction_data["data"]["sign_data"]["message"]["maker"]
-        et = int(transaction_data["data"]["sign_data"]["message"]["expiryTime"])
         s = await self.exchange_symbol_associated_to_pair(trading_pair=trading_pair)
         symbol: str = s.replace('-', '_')
-
-        # datas to sign
-        domain_data = {
-            "name": "TegroDEX",
-            "version": "1",
-            "chainId": self.chain,
-            "verifyingContract": vc,
-        }
-        message_data = {
-            "baseToken": bt,
-            "expiryTime": et,
-            "isBuy": isb,
-            "maker": ma,
-            "price": pr,
-            "quoteToken": qt,
-            "salt": sa,
-            "totalQuantity": am,
-
-        }
-        message_types = {
-            "Order": [
-                {"name": "baseToken", "type": "address"},
-                {"name": "quoteToken", "type": "address"},
-                {"name": "price", "type": "uint256"},
-                {"name": "totalQuantity", "type": "uint256"},
-                {"name": "isBuy", "type": "bool"},
-                {"name": "salt", "type": "uint256"},
-                {"name": "maker", "type": "address"},
-                {"name": "expiryTime", "type": "uint256"}
-            ],
-        }
+        domain_data = transaction_data["data"]["sign_data"]["domain"]
+        message_data = transaction_data["data"]["sign_data"]["message"]
+        message_types = {"Order": transaction_data["data"]["sign_data"]["types"]["Order"]}
 
         # encode and sign
         structured_data = encode_typed_data(domain_data, message_types, message_data)
@@ -477,16 +439,40 @@ class TegroExchange(ExchangePyBase):
             raise IOError(f"Error submitting order {data}")
         return data
 
+    async def generate_cancel_order_typed_data(self, ids: list) -> Dict[str, Any]:
+        params = {
+            "order_ids": ids,
+            "user_address": self.api_key.lower()
+        }
+        data = await self._api_request(
+            path_url=CONSTANTS.GENERATE_ORDER_URL,
+            method=RESTMethod.POST,
+            data=params,
+            is_auth_required=False,
+            limit_id=CONSTANTS.GENERATE_ORDER_URL,
+        )
+        # datas to sign
+        domain_data = data["data"]["sign_data"]["domain"]
+        message_data = data["data"]["sign_data"]["message"]
+        message_types = {"CancelOrder": data["data"]["sign_data"]["types"]["CancelOrder"]}
+
+        # encode and sign
+        structured_data = encode_typed_data(domain_data, message_types, message_data)
+        signed = self.wallet.sign_message(structured_data)
+        signature = signed.signature.hex()
+        if data["message"] != "success":
+            raise IOError(f"Error generating cancel order {data}")
+        return signature
+
     async def _place_cancel(self, order_id: str, tracked_order: InFlightOrder):
         # order_id = await tracked_order.get_exchange_order_id()
-        address = self.api_key.lower()
-        structured_data = messages.encode_defunct(text=address)
-        sign = Account.sign_message(structured_data, self.secret_key)
-        signature = sign.signature.hex()
+        ids = []
         ex_oid = await tracked_order.get_exchange_order_id()
+        ids.append(ex_oid)
+        signature = await self.generate_cancel_order_typed_data(ids)
         params = {
-            "chain_id": self.chain,
-            "id": ex_oid,
+            "user_address": self.api_key,
+            "order_ids": ids,
             "Signature": signature,
         }
         try:

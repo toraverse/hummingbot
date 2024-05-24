@@ -26,8 +26,8 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         super().setUpClass()
         cls.ev_loop = asyncio.get_event_loop()
-        cls.base_asset = "KRYPTONITE"
-        cls.quote_asset = "USDT"
+        cls.base_asset = "WETH"
+        cls.quote_asset = "USDC"
         cls.tegro_api_key = "",
         cls.chain = ""
         cls.rpc_url = ""
@@ -46,8 +46,8 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
             client_config_map=client_config_map,
             tegro_api_key="",
             tegro_api_secret="",
-            chain="polygon",
-            rpc_url = "polygon_amoy",
+            chain="base",
+            rpc_url = "base_mainnet",
             trading_pairs=[],
             trading_required=False,
             domain=self.domain)
@@ -158,56 +158,57 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
         return resp
 
     def _market_list_response(self):
-        resp = [
-            {
-                "BaseContractAddress": "0xec8e3f97af8d451e9d15ae09428cbd2a6931e0ba",  # noqa: mock
-                "QuoteContractAddress": "0xe5ae73187d0fed71bda83089488736cadcbf072d",  # noqa: mock
-                "ChainId": 80001,
-                "ID": "80001_0xec8e3f97af8d451e9d15ae09428cbd2a6931e0ba_0xe5ae73187d0fed71bda83089488736cadcbf072d",  # noqa: mock
-                "Symbol": "POKEBALLS_USDT",
-                "State": "verified",
-                "BaseSymbol": "POKEBALLS",
-                "QuoteSymbol": "USDT",
-                "BaseDecimal": 4,
-                "QuoteDecimal": 4,
-                "CreatedAt": "2024-01-08T16:36:20.92852Z",
-                "UpdatedAt": "2024-01-08T16:36:20.92852Z",
-                "ticker": {
-                    "base_volume": 0,
-                    "quote_volume": 0,
-                    "price": 0.0065,
-                    "price_change_24h": 0,
-                    "price_high_24h": 0,
-                    "price_low_24h": 0,
-                    "ask_low": 0,
-                    "bid_high": 0
-                }
-            },
-            {
-                "BaseContractAddress": "0x6464e14854d58feb60e130873329d77fcd2d8eb7",  # noqa: mock
-                "QuoteContractAddress": "0xe5ae73187d0fed71bda83089488736cadcbf072d",  # noqa: mock
-                "ChainId": 80001,
-                "ID": "80001_0x6464e14854d58feb60e130873329d77fcd2d8eb7_0xe5ae73187d0fed71bda83089488736cadcbf072d",  # noqa: mock
-                "Symbol": "KRYPTONITE_USDT",
-                "State": "verified",
-                "BaseSymbol": "KRYPTONITE",
-                "QuoteSymbol": "USDT",
-                "BaseDecimal": 4,
-                "QuoteDecimal": 4,
-                "CreatedAt": "2024-01-08T16:36:40.365473Z",
-                "UpdatedAt": "2024-01-08T16:36:40.365473Z",
-                "ticker": {
-                    "base_volume": 0,
-                    "quote_volume": 0,
-                    "price": 58,
-                    "price_change_24h": 0,
-                    "price_high_24h": 0,
-                    "price_low_24h": 0,
-                    "ask_low": 0,
-                    "bid_high": 0
-                }
-            }
-        ]
+        resp = {
+            "data": [
+                {
+                    "id": "8453_0x4200000000000000000000000000000000000006_0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+                    "base_contract_address": "0x4200000000000000000000000000000000000006",
+                    "quote_contract_address": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+                    "chain_id": 8453,
+                    "symbol": "WETH_USDC",
+                    "state": "verified",
+                    "base_symbol": "WETH",
+                    "quote_symbol": "USDC",
+                    "base_decimal": 18,
+                    "quote_decimal": 6,
+                    "logo": "",
+                    "ticker": {
+                        "base_volume": 0.1229889063497669,
+                        "quote_volume": 381.2849481633775,
+                        "price": 3200,
+                        "price_change_24h": 3.46,
+                        "price_high_24h": 3200,
+                        "price_low_24h": 3081.311117,
+                        "ask_low": 3081.311117,
+                        "bid_high": 3200
+                    }
+                },
+                {
+                    "id": "8453_0x4ed4e862860bed51a9570b96d89af5e1b0efefed_0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+                    "base_contract_address": "0x4ed4e862860bed51a9570b96d89af5e1b0efefed",
+                    "quote_contract_address": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+                    "chain_id": 8453,
+                    "symbol": "DEGEN_USDC",
+                    "state": "verified",
+                    "base_symbol": "DEGEN",
+                    "quote_symbol": "USDC",
+                    "base_decimal": 18,
+                    "quote_decimal": 6,
+                    "logo": "",
+                    "ticker": {
+                        "base_volume": 64737.548559999996,
+                        "quote_volume": 1060.1629772124318,
+                        "price": 0.016584,
+                        "price_change_24h": -3.7,
+                        "price_high_24h": 0.0172,
+                        "price_low_24h": 0.015788,
+                        "ask_low": 0.015788,
+                        "bid_high": 0.016313
+                    }
+                },
+            ],
+            "success": True
+        }
         return resp
 
     @aioresponses()
@@ -253,7 +254,7 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
             self,
             mock_api) -> str:
         url = web_utils.private_rest_url(CONSTANTS.MARKET_LIST_PATH_URL)
-        regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
+        regex_url = re.compile(f"{url.format(self.chain)}")
         response = self._market_list_response()
         mock_api.get(regex_url, body=json.dumps(response))
         return response
@@ -282,7 +283,7 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
         print(sent_subscription_messages)
         expected_trade_subscription = {
             "action": "subscribe",
-            "channelId": f"{CONSTANTS.CHAIN_ID}/0x6464e14854d58feb60e130873329d77fcd2d8eb7"  # noqa: mock
+            "channelId": f"{CONSTANTS.CHAIN_ID}/0x4200000000000000000000000000000000000006"  # noqa: mock
         }
         self.assertEqual(expected_trade_subscription, sent_subscription_messages[0])
 
