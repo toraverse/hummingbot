@@ -404,7 +404,7 @@ class TegroExchange(ExchangePyBase):
                 limit_id = CONSTANTS.ORDER_PATH_URL,
             )
             o_id = str(data["data"]["orderId"])
-            transact_time = tegro_utils.datetime_val_or_now(data["data"]["timestamp"], on_error_return_now=True).timestamp(),
+            transact_time = tegro_utils.datetime_val_or_now(data["data"]["time"], on_error_return_now=True).timestamp(),
         except IOError as e:
             error_description = str(e)
             is_server_overloaded = ("status is 503" in error_description
