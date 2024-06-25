@@ -27,8 +27,6 @@ class TegroUserStreamDataSourceUnitTests(unittest.TestCase):
         cls.ex_trading_pair = f"{cls.base_asset}_{cls.quote_asset}"
         cls.domain = CONSTANTS.DOMAIN
 
-        cls.chain_id = "polygon"
-        cls.rpc_url = "polygon_amoy"
         cls.api_key = "TEST_API_KEY"  # noqa: mock
         cls.secret_key = "TEST_SECRET_KEY"  # noqa: mock
 
@@ -40,7 +38,6 @@ class TegroUserStreamDataSourceUnitTests(unittest.TestCase):
 
         self.emulated_time = 1640001112.223
         self.auth = TegroAuth(
-            chain_id=self.chain_id,
             api_key=self.api_key,
             api_secret=self.secret_key)
         self.throttler = AsyncThrottler(rate_limits=CONSTANTS.RATE_LIMITS)

@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
@@ -19,16 +19,21 @@ from hummingbot.connector.exchange.tegro.tegro_messages import encode_typed_data
 from hummingbot.connector.exchange_py_base import ExchangePyBase
 from hummingbot.connector.trading_rule import TradingRule
 from hummingbot.connector.utils import TradeFillOrderDetails, combine_to_hb_trading_pair
-from hummingbot.core.data_type.cancellation_result import CancellationResult
-from hummingbot.core.data_type.common import OpenOrder, OrderType, TradeType
+
+# from hummingbot.core.data_type.cancellation_result import CancellationResult
+# from hummingbot.core.data_type.common import OpenOrder
+from hummingbot.core.data_type.common import OrderType, TradeType
 from hummingbot.core.data_type.in_flight_order import InFlightOrder, OrderUpdate, TradeUpdate
 from hummingbot.core.data_type.order_book_tracker_data_source import OrderBookTrackerDataSource
 from hummingbot.core.data_type.trade_fee import DeductedFromReturnsTradeFee, TokenAmount, TradeFeeBase
 from hummingbot.core.data_type.user_stream_tracker_data_source import UserStreamTrackerDataSource
-from hummingbot.core.event.events import MarketEvent, OrderCancelledEvent, OrderFilledEvent
-from hummingbot.core.utils.async_utils import safe_ensure_future, safe_gather
+
+# from hummingbot.core.event.events import  OrderCancelledEvent
+from hummingbot.core.event.events import MarketEvent, OrderFilledEvent
+from hummingbot.core.utils.async_utils import safe_gather
 from hummingbot.core.utils.estimate_fee import build_trade_fee
-from hummingbot.core.utils.gateway_config_utils import SUPPORTED_CHAINS
+
+# from hummingbot.core.utils.gateway_config_utils import SUPPORTED_CHAINS
 from hummingbot.core.web_assistant.connections.data_types import RESTMethod
 from hummingbot.core.web_assistant.web_assistants_factory import WebAssistantsFactory
 
@@ -51,16 +56,12 @@ class TegroExchange(ExchangePyBase):
                  client_config_map: "ClientConfigAdapter",
                  tegro_api_key: str,
                  tegro_api_secret: str,
-                 chain: str,
-                 rpc_url: str,
                  trading_pairs: Optional[List[str]] = None,
                  trading_required: bool = True,
                  domain: str = CONSTANTS.DEFAULT_DOMAIN
                  ):
         self.api_key = tegro_api_key
         self.secret_key = tegro_api_secret
-        self.node_url = rpc_url
-        self.chain_id = chain
         self._api_factory = WebAssistantsFactory
         self._domain = domain
         self._shared_client = aiohttp.ClientSession()
@@ -82,8 +83,7 @@ class TegroExchange(ExchangePyBase):
     def authenticator(self):
         return TegroAuth(
             api_key=self.api_key,
-            api_secret=self.secret_key,
-            chain_id=self.chain_id
+            api_secret=self.secret_key
         )
 
     @property
@@ -103,25 +103,25 @@ class TegroExchange(ExchangePyBase):
         return self._domain
 
     @property
+    def chain_id(self):
+        return self._domain.split("_")[1] if "testnet" in self._domain else self._domain
+
+    @property
     def client_order_id_max_length(self):
         return CONSTANTS.MAX_ORDER_ID_LEN
 
     @property
     def chain(self):
-        if self.chain_id is not None and self._domain == "tegro":
-            if self.chain_id in CONSTANTS.MAINNET_CHAIN_IDS.keys():
-                chain = CONSTANTS.MAINNET_CHAIN_IDS[self.chain_id]
-            else:
-                chain = CONSTANTS.CHAIN_ID
-        elif self.chain_id is not None and self._domain == "tegro_testnet":
+        if self._domain == "tegro":
+            # In this case tegro is default to base mainnet
+            chain = CONSTANTS.MAINNET_CHAIN_IDS[self._domain]
+        elif "testnet" in self._domain:
             chain = CONSTANTS.TESTNET_CHAIN_IDS[self.chain_id]
-        else:
-            chain = CONSTANTS.CHAIN_ID
         return chain
 
     @property
     def rpc_node_url(self):
-        url = CONSTANTS.Node_URLS[self.node_url]
+        url = CONSTANTS.Node_URLS[self._domain]
         return url
 
     @property
@@ -169,7 +169,7 @@ class TegroExchange(ExchangePyBase):
         )
 
         pairs_prices = data["data"]
-        for pair_price_data in pairs_prices[0]:
+        for pair_price_data in pairs_prices:
             results[pair_price_data["symbol"]] = {
                 "best_bid": pair_price_data["ticker"]["bid_high"],
                 "best_ask": pair_price_data["ticker"]["ask_low"],
@@ -238,56 +238,6 @@ class TegroExchange(ExchangePyBase):
             price=price,
         )
         return fee
-
-    def buy(self,
-            trading_pair: str,
-            amount: Decimal,
-            order_type=OrderType.LIMIT,
-            price: Decimal = s_decimal_NaN,
-            **kwargs) -> str:
-        """
-        Creates a promise to create a buy order using the parameters
-
-        :param trading_pair: the token pair to operate with
-        :param amount: the order amount
-        :param order_type: the type of order to create (MARKET, LIMIT, LIMIT_MAKER)
-        :param price: the order price
-
-        :return: the id assigned by the connector to the order (the client id)
-        """
-        order_id = tegro_utils.get_client_order_id(True)
-        safe_ensure_future(self._create_order(
-            trade_type=TradeType.BUY,
-            order_id=order_id,
-            trading_pair=trading_pair,
-            amount=amount,
-            order_type=order_type,
-            price=price))
-        return order_id
-
-    def sell(self,
-             trading_pair: str,
-             amount: Decimal,
-             order_type: OrderType = OrderType.LIMIT,
-             price: Decimal = s_decimal_NaN,
-             **kwargs) -> str:
-        """
-        Creates a promise to create a sell order using the parameters.
-        :param trading_pair: the token pair to operate with
-        :param amount: the order amount
-        :param order_type: the type of order to create (MARKET, LIMIT, LIMIT_MAKER)
-        :param price: the order price
-        :return: the id assigned by the connector to the order (the client id)
-        """
-        order_id = tegro_utils.get_client_order_id(False)
-        safe_ensure_future(self._create_order(
-            trade_type=TradeType.SELL,
-            order_id=order_id,
-            trading_pair=trading_pair,
-            amount=amount,
-            order_type=order_type,
-            price=price))
-        return order_id
 
     def get_allowance(self, exchange_con_addr, con_addr, addr):
         w3 = Web3(Web3.HTTPProvider(self.rpc_node_url))
@@ -498,64 +448,64 @@ class TegroExchange(ExchangePyBase):
                 raise
         return True if ("Order cancelled successfully" in new_res[0] or "Order is not active" in new_res[0])else False
 
-    async def cancel_all(self, timeout_sec: float) -> List[CancellationResult]:
-        """
-        Cancels all in-flight orders and waits for cancellation results.
-        Used by bot's top level stop and exit commands (cancelling outstanding orders on exit)
-        :param timeout_sec: The timeout at which the operation will be canceled.
-        :returns List of CancellationResult which indicates whether each order is successfully cancelled.
-        """
+    # async def cancel_all(self, timeout_sec: float) -> List[CancellationResult]:
+    #     """
+    #     Cancels all in-flight orders and waits for cancellation results.
+    #     Used by bot's top level stop and exit commands (cancelling outstanding orders on exit)
+    #     :param timeout_sec: The timeout at which the operation will be canceled.
+    #     :returns List of CancellationResult which indicates whether each order is successfully cancelled.
+    #     """
 
-        # Note: Tegro's CancelOrder endpoint simply indicates if the cancel requests has been succesfully received.
-        cancellation_results = []
-        tracked_orders = self.in_flight_orders
-        try:
-            for order in tracked_orders.values():
-                self.cancel(trading_pair=order.trading_pair,
-                            client_order_id=order.client_order_id)
+    #     # Note: Tegro's CancelOrder endpoint simply indicates if the cancel requests has been succesfully received.
+    #     cancellation_results = []
+    #     tracked_orders = self.in_flight_orders
+    #     try:
+    #         for order in tracked_orders.values():
+    #             self.cancel(trading_pair=order.trading_pair,
+    #                         client_order_id=order.client_order_id)
 
-            open_orders = await self.get_open_orders()
+    #         open_orders = await self.get_open_orders()
 
-            for client_oid, tracked_order in tracked_orders.items():
-                matched_order = [o for o in open_orders if o.exchange_order_id == client_oid]
-                if not matched_order:
-                    cancellation_results.append(CancellationResult(client_oid, True))
-                    self.trigger_event(MarketEvent.OrderCancelled,
-                                       OrderCancelledEvent(self.current_timestamp, client_oid))
-                else:
-                    cancellation_results.append(CancellationResult(client_oid, False))
+    #         for client_oid, tracked_order in tracked_orders.items():
+    #             matched_order = [o for o in open_orders if o.exchange_order_id == client_oid]
+    #             if not matched_order:
+    #                 cancellation_results.append(CancellationResult(client_oid, True))
+    #                 self.trigger_event(MarketEvent.OrderCancelled,
+    #                                    OrderCancelledEvent(self.current_timestamp, client_oid))
+    #             else:
+    #                 cancellation_results.append(CancellationResult(client_oid, False))
 
-        except Exception as ex:
-            self.logger().network(
-                f"Failed to cancel all orders ({ex})",
-                exc_info=True,
-                app_warning_msg="Failed to cancel all orders on Tegro. Check API key and network connection."
-            )
-        return cancellation_results
+    #     except Exception as ex:
+    #         self.logger().network(
+    #             f"Failed to cancel all orders ({ex})",
+    #             exc_info=True,
+    #             app_warning_msg="Failed to cancel all orders on Tegro. Check API key and network connection."
+    #         )
+    #     return cancellation_results
 
-    async def get_open_orders(self) -> List[OpenOrder]:
-        query_params = {
-            "chain_id": self.chain,
-            "statuses": "active"
-        }
-        open_orders: List[Dict[str, Any]] = await self._api_request(method=RESTMethod.GET,
-                                                                    path_url=CONSTANTS.ORDER_LIST.format(self.api_key),
-                                                                    params=query_params,
-                                                                    limit_id=CONSTANTS.ORDER_LIST,
-                                                                    is_auth_required=False)
+    # async def get_open_orders(self) -> List[OpenOrder]:
+    #     query_params = {
+    #         "chain_id": self.chain,
+    #         "statuses": "active,partial"
+    #     }
+    #     open_orders: List[Dict[str, Any]] = await self._api_request(method=RESTMethod.GET,
+    #                                                                 path_url=CONSTANTS.ORDER_LIST.format(self.api_key),
+    #                                                                 params=query_params,
+    #                                                                 limit_id=CONSTANTS.ORDER_LIST,
+    #                                                                 is_auth_required=False)
 
-        return [OpenOrder(client_order_id=order["orderId"],
-                          trading_pair=[f'{order["baseCurrency"]}-{order["quoteCurrency"]}'],
-                          price=Decimal(str(order["price"])),
-                          amount=Decimal(str(order["quantity"])),
-                          executed_amount=Decimal(str(order["quantity"])),
-                          status=order["status"],
-                          order_type=OrderType.LIMIT,
-                          is_buy=True if order["side"] == "buy" else False,
-                          time=tegro_utils.datetime_val_or_now(order.get('time'), on_error_return_now=True).timestamp(),
-                          exchange_order_id=order["orderId"],
-                          )
-                for order in open_orders]
+    #     return [OpenOrder(client_order_id=order["orderId"],
+    #                       trading_pair=[f'{order["baseCurrency"]}-{order["quoteCurrency"]}'],
+    #                       price=Decimal(str(order["price"])),
+    #                       amount=Decimal(str(order["quantity"])),
+    #                       executed_amount=Decimal(str(order["quantity"])),
+    #                       status=order["status"],
+    #                       order_type=OrderType.LIMIT,
+    #                       is_buy=True if order["side"] == "buy" else False,
+    #                       time=tegro_utils.datetime_val_or_now(order.get('time'), on_error_return_now=True).timestamp(),
+    #                       exchange_order_id=order["orderId"],
+    #                       )
+    #             for order in open_orders]
 
     async def _format_trading_rules(self, exchange_info_dict: Dict[str, Any]) -> List[TradingRule]:
         """
@@ -708,10 +658,11 @@ class TegroExchange(ExchangePyBase):
         user_orders = await self._api_get(
             path_url=CONSTANTS.ORDER_LIST.format(self.api_key),
             params={"chain_id": self.chain,
+                    "statuses": "active,completed,cancelled",
+                    "page_size": 50,
                     "market_id": f'{self._market["data"]["id"]}'},
             limit_id=CONSTANTS.ORDER_LIST,
             is_auth_required=False,
-            headers={"Content-Type": "application/json"}
         )
         return user_orders
 
@@ -777,10 +728,26 @@ class TegroExchange(ExchangePyBase):
 
             trading_pairs = self.trading_pairs
 
-            user_trades = await self._user_trades()
+            tasks = []
 
-            if len(user_trades) > 0:
-                for trade, trading_pair in zip(user_trades, trading_pairs):
+            user_trades = await self._user_trades()
+            if self._last_poll_timestamp > 0:
+                # Filter trades based on timestamp and symbol
+                task = [
+                    entry for entry in user_trades
+                    if entry["time"] >= (datetime.utcnow() - timedelta(minutes=self.SHORT_POLL_INTERVAL)).isoformat()[:23] + "Z"
+                ]
+            else:
+                task = user_trades
+            tasks.append(task)
+
+            self.logger().debug(f"Polling for order fills of {len(tasks)} trading pairs.")
+
+            # Gather results
+            results = tasks[0]
+
+            if len(results) > 0:
+                for trade, trading_pair in zip(results, trading_pairs):
 
                     if isinstance(trade, Exception):
                         self.logger().network(
@@ -845,19 +812,19 @@ class TegroExchange(ExchangePyBase):
         trade_updates = []
 
         if order.exchange_order_id is not None:
+            data = await self._user_trades()
             exchange_order_id = str(order.exchange_order_id)
             trading_pair = await self.exchange_symbol_associated_to_pair(trading_pair=order.trading_pair)
-            all_fills_response = await self._api_request(
-                method=RESTMethod.GET,
-                path_url=CONSTANTS.TRADES_FOR_ORDER_PATH_URL.format(order.exchange_order_id),
-                is_auth_required=False,
-                limit_id=CONSTANTS.TRADES_FOR_ORDER_PATH_URL)
+            all_fills_response = [
+                order for order in data
+                if order["orderId"] == exchange_order_id and order["symbol"] == trading_pair
+            ]
 
             for trade in all_fills_response:
                 timestamp = datetime.strptime(trade["time"], '%Y-%m-%dT%H:%M:%S.%fZ')
                 formatted_time = timestamp.strftime('%Y%m%d')
 
-                exchange_order_id = order.exchange_order_id
+                exchange_order_id = str(trade["orderId"])
                 symbol = trade["symbol"].split('_')[0]
                 fee = TradeFeeBase.new_spot_fee(
                     fee_schema=self.trade_fee_schema(),
@@ -898,9 +865,11 @@ class TegroExchange(ExchangePyBase):
         """
         Fetches the list of orders from the API.
         """
+        await self._initialize_verified_market()
         params = {
             "chain_id": self.chain,
-            "market_id": str(self._market["data"]["id"])
+            "market_id": str(self._market["data"]["id"]),
+            "page_size": 50
         }
 
         response = await self._api_get(
@@ -908,7 +877,6 @@ class TegroExchange(ExchangePyBase):
             params=params,
             limit_id=CONSTANTS.ORDER_LIST,
             is_auth_required=False,
-            headers={"Content-Type": "application/json"}
         )
         return response
 
@@ -948,7 +916,6 @@ class TegroExchange(ExchangePyBase):
             method=RESTMethod.GET,
             path_url=CONSTANTS.ACCOUNTS_PATH_URL.format(self.chain, self.api_key),
             limit_id=CONSTANTS.ACCOUNTS_PATH_URL,
-            new_url=False,
             is_auth_required=False)
 
         data = []
@@ -973,22 +940,11 @@ class TegroExchange(ExchangePyBase):
     async def _update_balances(self):
         local_asset_names = set(self._account_balances.keys())
         remote_asset_names = set()
-        symbols = set()
-
-        await self._initialize_market_list()
-        data = set()
-        for res in self._markets["data"]:
-            data.update((res["base_symbol"], res["quote_symbol"]))
-
-        all_asset_names = data
-        symbols.update(SUPPORTED_CHAINS)
-        symbols.update(all_asset_names)
 
         account_info = await self._api_request(
             method=RESTMethod.GET,
             path_url=CONSTANTS.ACCOUNTS_PATH_URL.format(self.chain, self.api_key),
             limit_id=CONSTANTS.ACCOUNTS_PATH_URL,
-            new_url = False,
             is_auth_required=False)
 
         balances = account_info["data"]
@@ -996,12 +952,11 @@ class TegroExchange(ExchangePyBase):
             asset_name = balance_entry["symbol"]
             bal = float(str(balance_entry["balance"]))
             balance = Decimal(bal)
-            if asset_name in symbols:
-                free_balance = balance
-                total_balance = balance
-                self._account_available_balances[asset_name] = free_balance
-                self._account_balances[asset_name] = total_balance
-                remote_asset_names.add(asset_name)
+            free_balance = balance
+            total_balance = balance
+            self._account_available_balances[asset_name] = free_balance
+            self._account_balances[asset_name] = total_balance
+            remote_asset_names.add(asset_name)
 
         asset_names_to_remove = local_asset_names.difference(remote_asset_names)
         for asset in asset_names_to_remove:
@@ -1011,10 +966,16 @@ class TegroExchange(ExchangePyBase):
     async def _initialize_trading_pair_symbol_map(self):
         try:
             data = await self._api_request(
+                params={
+                    "page": 1,
+                    "sort_order": "desc",
+                    "sort_by": "volume",
+                    "page_size": 20,
+                    "verified": "true"
+                },
                 method=RESTMethod.GET,
                 path_url = self.trading_pairs_request_path.format(self.chain),
                 is_auth_required = False,
-                new_url = True,
                 limit_id = CONSTANTS.EXCHANGE_INFO_PATH_LIST_URL
             )
             exchange_info = data["data"]
@@ -1039,9 +1000,15 @@ class TegroExchange(ExchangePyBase):
         try:
             self._markets = await self._api_request(
                 method=RESTMethod.GET,
+                params={
+                    "page": 1,
+                    "sort_order": "desc",
+                    "sort_by": "volume",
+                    "page_size": 20,
+                    "verified": "true"
+                },
                 path_url = CONSTANTS.MARKET_LIST_PATH_URL.format(self.chain),
                 is_auth_required = False,
-                new_url = True,
                 limit_id = CONSTANTS.MARKET_LIST_PATH_URL,
             )
         except Exception:
@@ -1053,8 +1020,10 @@ class TegroExchange(ExchangePyBase):
     async def _initialize_verified_market(self):
         await self._initialize_market_list()
         id = []
+        for trading_pair in self.trading_pairs:
+            symbol = await self.exchange_symbol_associated_to_pair(trading_pair=trading_pair)
         for market in self._markets["data"]:
-            if market["chain_id"] == self.chain:
+            if market["chain_id"] == self.chain and market["symbol"] == symbol:
                 id.append(market)
         try:
             self._market = await self._api_request(
@@ -1062,7 +1031,6 @@ class TegroExchange(ExchangePyBase):
                 path_url = CONSTANTS.EXCHANGE_INFO_PATH_URL.format(
                     self.chain, id[0]["id"]),
                 is_auth_required = False,
-                new_url = True,
                 limit_id = CONSTANTS.EXCHANGE_INFO_PATH_URL,
             )
         except Exception:
@@ -1073,6 +1041,7 @@ class TegroExchange(ExchangePyBase):
 
     async def _get_last_traded_price(self, trading_pair: str) -> float:
         symbol = await self.exchange_symbol_associated_to_pair(trading_pair=trading_pair)
+        await self._initialize_verified_market()
         if symbol is not None:
             resp_json = await self._api_request(
                 method=RESTMethod.GET,
@@ -1080,7 +1049,7 @@ class TegroExchange(ExchangePyBase):
                 is_auth_required = False,
                 limit_id = CONSTANTS.TICKER_PRICE_CHANGE_PATH_URL
             )
-            return float(resp_json["data"]["ticker"]["price"])
+            return Decimal(resp_json["data"]["ticker"]["price"])
 
     async def _make_network_check_request(self):
         status = await self._api_request(

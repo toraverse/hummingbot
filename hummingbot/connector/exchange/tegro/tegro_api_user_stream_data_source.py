@@ -53,6 +53,12 @@ class TegroUserStreamDataSource(UserStreamTrackerDataSource):
             self._ws_assistant = await self._api_factory.get_ws_assistant()
         return self._ws_assistant
 
+    async def _send_ping(self, websocket_assistant: WSAssistant):
+        API_KEY = self._auth._api_key
+        payload = {"action": "subscribe", "channelId": API_KEY}
+        ping_request: WSJSONRequest = WSJSONRequest(payload=payload)
+        await websocket_assistant.send(ping_request)
+
     async def listen_for_user_stream(self, output: asyncio.Queue):
         ws = None
         while True:

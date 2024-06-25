@@ -9,8 +9,7 @@ DEFAULT_DOMAIN = "tegro"
 
 DOMAIN = EXCHANGE_NAME
 HBOT_ORDER_ID_PREFIX = "HB"
-USER_AGENT = "HBOT"
-MAX_ORDER_ID_LEN = 32
+MAX_ORDER_ID_LEN = 10
 
 # Base URL
 # https://api.testnet.tegro.com/v2
@@ -22,8 +21,49 @@ TESTNET_WS_URL = "wss://api.testnet.tegro.com/api/v1/events/"
 
 CHAIN_ID = 8453
 
+PUBLIC_WS_ENDPOINT = "ws"
+
+# Public API endpoints or TegroClient function
+TICKER_PRICE_CHANGE_PATH_URL = "v1/exchange/{}/market/{}"
+EXCHANGE_INFO_PATH_LIST_URL = "v1/exchange/{}/market/list"
+EXCHANGE_INFO_PATH_URL = "v1/exchange/{}/market/{}"
+PING_PATH_URL = "v1/exchange/chain/list"  # TODO
+SNAPSHOT_PATH_URL = "v1/orderbook/depth"
+SERVER_TIME_PATH_URL = "v1/orderbook/depth"
+
+# REST API ENDPOINTS
+ACCOUNTS_PATH_URL = "v1/accounts/{}/{}/portfolio"
+MARKET_LIST_PATH_URL = "v1/exchange/{}/market/list"
+GENERATE_ORDER_URL = "v1/trading/market/orders/typedData/generateCancelOrder"
+GENERATE_SIGN_URL = "v1/trading/market/orders/typedData/generate"
+TRADES_PATH_URL = "v1/exchange/{}/market/trades"
+TRADES_FOR_ORDER_PATH_URL = "v1/trading/market/orders/trades/{}"
+ORDER_PATH_URL = "v1/trading/market/orders/place"
+CHAIN_LIST = "v1/exchange/chain/list"
+CHARTS_TRADES = "v1/exchange/{}/market/chart"
+ORDER_LIST = "v1/trading/market/orders/user/{}"
+CANCEL_ORDER_URL = "v1/trading/market/orders/cancel"
+CANCEL_ORDER_ALL_URL = "v1/trading/market/orders/cancelAll"
+TEGRO_USER_ORDER_PATH_URL = "v1/trading/market/orders/user/{}"
+
+
+WS_HEARTBEAT_TIME_INTERVAL = 30
+
+API_LIMIT_REACHED_ERROR_MESSAGE = "TOO MANY REQUESTS"
+
+# Tegro params
+SIDE_BUY = "buy"
+SIDE_SELL = "sell"
+
+ORDER_STATE = {
+    "Active": OrderState.OPEN,
+    "Matched": OrderState.FILLED,
+    "Cancelled": OrderState.CANCELED,
+}
+
 MAINNET_CHAIN_IDS = {
-    "base": 8453,
+    # tegro is same as base in this case
+    "tegro": 8453,
 }
 
 ABI = {
@@ -72,11 +112,11 @@ ABI = {
 }
 
 Node_URLS = {
-    "arbitrum_sepolia": "https://sepolia-rollup.arbitrum.io/rpc",
-    "polygon_amoy": "https://rpc-amoy.polygon.technology",
-    "optimism_sepolia": "https://sepolia.optimism.io",
-    "base_mainnet": "https://mainnet.base.org",
-    "base_sepolia": "https://sepolia.base.org"
+    "tegro": "https://mainnet.base.org",
+    "tegro_arbitrum_testnet": "https://sepolia-rollup.arbitrum.io/rpc",
+    "tegro_polygon_testnet": "https://rpc-amoy.polygon.technology",
+    "tegro_optimism_testnet": "https://sepolia.optimism.io",
+    "tegro_base_testnet": "https://sepolia.base.org"
 }
 
 TESTNET_CHAIN_IDS = {
@@ -84,48 +124,6 @@ TESTNET_CHAIN_IDS = {
     "arbitrum": 421614,
     "base": 84532,
     "optimism": 11155420
-}
-
-PUBLIC_WS_ENDPOINT = "ws"
-
-# Public API endpoints or TegroClient function
-TICKER_PRICE_CHANGE_PATH_URL = "v1/exchange/{}/market/{}"
-EXCHANGE_INFO_PATH_LIST_URL = "v1/exchange/{}/market/list"
-EXCHANGE_INFO_PATH_URL = "v1/exchange/{}/market/{}"
-PING_PATH_URL = "v1/exchange/chain/list"  # TODO
-SNAPSHOT_PATH_URL = "v1/trading/market/orderbook/depth"
-
-# REST API ENDPOINTS
-ACCOUNTS_PATH_URL = "v1/accounts/{}/{}/portfolio"
-MARKET_LIST_PATH_URL = "v1/exchange/{}/market/list"
-GENERATE_ORDER_URL = "v1/trading/market/orders/typedData/generateCancelOrder"
-GENERATE_SIGN_URL = "v1/trading/market/orders/typedData/generate"
-TRADES_PATH_URL = "v1/exchange/{}/market/trades"
-TRADES_FOR_ORDER_PATH_URL = "v1/trading/market/orders/trades/{}"
-ORDER_PATH_URL = "v1/trading/market/orders/place"
-CHAIN_LIST = "v1/exchange/chain/list"
-CHARTS_TRADES = "v1/exchange/{}/market/chart"
-ORDER_LIST = "v1/trading/market/orders/user/{}"
-CANCEL_ORDER_URL = "v1/trading/market/orders/cancel"
-CANCEL_ORDER_ALL_URL = "v1/trading/market/orders/cancelAll"
-TEGRO_USER_ORDER_PATH_URL = "v1/trading/market/orders/user/{}"
-
-
-WS_HEARTBEAT_TIME_INTERVAL = 30
-
-API_LIMIT_REACHED_ERROR_MESSAGE = "TOO MANY REQUESTS"
-
-# Tegro params
-SIDE_BUY = "buy"
-SIDE_SELL = "sell"
-
-ORDER_STATE = {
-    "Pending": OrderState.FILLED,
-    "Active": OrderState.OPEN,
-    "Matched": OrderState.FILLED,
-    "Completed": OrderState.COMPLETED,
-    "SoftCancelled": OrderState.PENDING_CANCEL,
-    "Cancelled": OrderState.CANCELED,
 }
 
 TRADE_EVENT_TYPE = "trade_updated"
@@ -174,6 +172,12 @@ RATE_LIMITS = [
     ),
     RateLimit(
         limit_id=SNAPSHOT_PATH_URL,
+        limit=NO_LIMIT,
+        time_interval=SECOND,
+        linked_limits=[LinkedLimitWeightPair(TICKER_PRICE_CHANGE_PATH_URL)]
+    ),
+    RateLimit(
+        limit_id=SERVER_TIME_PATH_URL,
         limit=NO_LIMIT,
         time_interval=SECOND,
         linked_limits=[LinkedLimitWeightPair(TICKER_PRICE_CHANGE_PATH_URL)]
