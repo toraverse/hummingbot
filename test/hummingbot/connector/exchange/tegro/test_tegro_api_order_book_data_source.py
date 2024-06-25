@@ -29,11 +29,9 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
         cls.base_asset = "WETH"
         cls.quote_asset = "USDC"
         cls.tegro_api_key = "",
-        cls.chain = ""
-        cls.rpc_url = ""
         cls.trading_pair = f"{cls.base_asset}-{cls.quote_asset}"
         cls.ex_trading_pair = cls.base_asset + cls.quote_asset
-        cls.domain = "tegro"
+        cls.domain = "tegro_polygon_testnet"
 
     def setUp(self) -> None:
         super().setUp()
@@ -46,8 +44,6 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
             client_config_map=client_config_map,
             tegro_api_key="",
             tegro_api_secret="",
-            chain="base",
-            rpc_url = "base_mainnet",
             trading_pairs=[],
             trading_required=False,
             domain=self.domain)
@@ -138,7 +134,7 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
     def _snapshot_response(self):
         resp = {
             "timestamp": 1709294334,
-            "Bids": [
+            "bids": [
                 {
                     "price": "6097.00",
                     "price_float": 0.61,
@@ -146,7 +142,7 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
                     "quantity_float": 0.16
                 },
             ],
-            "Asks": [
+            "asks": [
                 {
                     "price": "7129",
                     "price_float": 0.0713,
@@ -161,10 +157,10 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
         resp = {
             "data": [
                 {
-                    "id": "8453_0x4200000000000000000000000000000000000006_0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+                    "id": "80002_0x6b94a36d6ff05886d44b3dafabdefe85f09563ba_0x7551122e441edbf3fffcbcf2f7fcc636b636482b",
                     "base_contract_address": "0x4200000000000000000000000000000000000006",
                     "quote_contract_address": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
-                    "chain_id": 8453,
+                    "chain_id": 80002,
                     "symbol": "WETH_USDC",
                     "state": "verified",
                     "base_symbol": "WETH",
@@ -205,7 +201,7 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
                         "ask_low": 0.015788,
                         "bid_high": 0.016313
                     }
-                },
+                }
             ],
             "success": True
         }
@@ -248,16 +244,6 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
             self.async_run_with_timeout(
                 self.data_source.get_new_order_book(self.trading_pair)
             )
-
-    @aioresponses()
-    def test_fetch_market_data(
-            self,
-            mock_api) -> str:
-        url = web_utils.private_rest_url(CONSTANTS.MARKET_LIST_PATH_URL)
-        regex_url = re.compile(f"{url.format(self.chain)}")
-        response = self._market_list_response()
-        mock_api.get(regex_url, body=json.dumps(response))
-        return response
 
     @patch("aiohttp.ClientSession.ws_connect", new_callable=AsyncMock)
     def test_listen_for_subscriptions_subscribes_to_trades_and_order_diffs(self, ws_connect_mock):

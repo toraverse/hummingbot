@@ -1,15 +1,12 @@
 import time
 from datetime import datetime
 from decimal import Decimal
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from dateutil.parser import parse as dateparse
 from pydantic import Field, SecretStr
-from pydantic.class_validators import validator
 
 from hummingbot.client.config.config_data_types import BaseConnectorConfigMap, ClientFieldData
-from hummingbot.connector.exchange.tegro import tegro_constants as CONSTANTS
-from hummingbot.connector.exchange.tegro.tegro_tracking_nonce import get_tracking_nonce
 from hummingbot.core.data_type.trade_fee import TradeFeeSchema
 
 CENTRALIZED = False
@@ -20,53 +17,6 @@ DEFAULT_FEES = TradeFeeSchema(
     maker_percent_fee_decimal=Decimal("0"),
     taker_percent_fee_decimal=Decimal("0"),
 )
-
-
-def validate_mainnet_exchange(value: str) -> Optional[str]:
-    """
-    Permissively interpret a string as a boolean
-    """
-    valid_values = ('base')
-    if value.lower() not in valid_values:
-        return f"Invalid value, please choose value from {valid_values}"
-
-
-def validate_mainnet_rpc(value: str) -> Optional[str]:
-    """
-    Permissively interpret a string as a boolean
-    """
-    valid_values = ('base_mainnet')
-    if value.lower() not in valid_values:
-        return f"Invalid value, please choose value from {valid_values}"
-
-
-def validate_testnet_exchange(value: str) -> Optional[str]:
-    """
-    Permissively interpret a string as a boolean
-    """
-    valid_values = ('base', 'polygon', 'optimism', 'arbitrum')
-    if value.lower() not in valid_values:
-        return f"Invalid value, please choose value from {valid_values}"
-
-
-def validate_testnet_rpc(value: str) -> Optional[str]:
-    """
-    Permissively interpret a string as a boolean
-    """
-    valid_values = ('base_sepolia', 'polygon_amoy', 'optimism_sepolia', 'arbitrum_sepolia')
-    if value.lower() not in valid_values:
-        return f"Invalid value, please choose value from {valid_values}"
-
-
-def get_client_order_id(is_buy: bool) -> str:
-    """
-    Creates a client order id for a new order
-    :param is_buy: True if the order is a buy order, False if the order is a sell order
-    :return: an identifier for the new order to be used in the client
-    """
-    newId = str(get_tracking_nonce())[4:]
-    side = "00" if is_buy else "01"
-    return f"{CONSTANTS.HBOT_ORDER_ID_PREFIX}{side}{newId}"
 
 
 def is_exchange_information_valid(exchange_info: Dict[str, Any]) -> bool:
@@ -157,42 +107,6 @@ class TegroConfigMap(BaseConnectorConfigMap):
             prompt_on_new=True,
         )
     )
-    chain: str = Field(
-        default=...,
-        client_data=ClientFieldData(
-            prompt=lambda cm: "Enter your preferred chain. (base/ )",
-            is_secure=False,
-            is_connect_key=True,
-            prompt_on_new=True,
-        )
-    )
-    rpc_url: str = Field(
-        default=...,
-        client_data=ClientFieldData(
-            prompt=lambda cm: "Enter your preferred RPC URL. (base_mainnet/ )",
-            is_secure=False,
-            is_connect_key=True,
-            prompt_on_new=True,
-        )
-    )
-
-    @validator("chain", pre=True)
-    def validate_exchange(cls, v: str):
-        """Used for client-friendly error output."""
-        if isinstance(v, str):
-            ret = validate_mainnet_exchange(v)
-            if ret is not None:
-                raise ValueError(ret)
-        return v
-
-    @validator("rpc_url", pre=True)
-    def validate_rpc(cls, v: str):
-        """Used for client-friendly error output."""
-        if isinstance(v, str):
-            ret = validate_mainnet_rpc(v)
-            if ret is not None:
-                raise ValueError(ret)
-        return v
 
     class Config:
         title = "tegro"
@@ -200,14 +114,32 @@ class TegroConfigMap(BaseConnectorConfigMap):
 
 KEYS = TegroConfigMap.construct()
 
-OTHER_DOMAINS = ["tegro_testnet"]
-OTHER_DOMAINS_PARAMETER = {"tegro_testnet": "tegro_testnet"}
-OTHER_DOMAINS_EXAMPLE_PAIR = {"tegro_testnet": "BTC-USDT"}
-OTHER_DOMAINS_DEFAULT_FEES = {"tegro_testnet": DEFAULT_FEES}
+OTHER_DOMAINS = [
+    "tegro_arbitrum_testnet",
+    "tegro_polygon_testnet",
+    "tegro_base_testnet",
+    "tegro_optimism_testnet"
+]
+OTHER_DOMAINS_PARAMETER = {
+    "tegro_arbitrum_testnet": "tegro_arbitrum_testnet",
+    "tegro_polygon_testnet": "tegro_polygon_testnet",
+    "tegro_base_testnet": "tegro_base_testnet",
+    "tegro_optimism_testnet": "tegro_optimism_testnet"}
+OTHER_DOMAINS_EXAMPLE_PAIR = {
+    "tegro_arbitrum_testnet": "BTC-USDT",
+    "tegro_polygon_testnet": "BTC-USDT",
+    "tegro_base_testnet": "BTC-USDT",
+    "tegro_optimism_testnet": "BTC-USDT"
+}
+OTHER_DOMAINS_DEFAULT_FEES = {
+    "tegro_arbitrum_testnet": DEFAULT_FEES,
+    "tegro_polygon_testnet": DEFAULT_FEES,
+    "tegro_base_testnet": DEFAULT_FEES,
+    "tegro_optimism_testnet": DEFAULT_FEES}
 
 
 class TegroTestnetConfigMap(BaseConnectorConfigMap):
-    connector: str = Field(default="tegro_testnet", const=True, client_data=None)
+    connector: str = Field(default="tegro_arbitrum_testnet", const=True, client_data=None)
     tegro_api_key: SecretStr = Field(
         default=...,
         client_data=ClientFieldData(
@@ -226,48 +158,15 @@ class TegroTestnetConfigMap(BaseConnectorConfigMap):
             prompt_on_new=True,
         )
     )
-    chain: str = Field(
-        default=...,
-        client_data=ClientFieldData(
-            prompt=lambda cm: "Enter your preferred chain. (base/polygon/optimism/arbitrum)",
-            is_secure=False,
-            is_connect_key=True,
-            prompt_on_new=True,
-        )
-    )
-    rpc_url: str = Field(
-        default=...,
-        client_data=ClientFieldData(
-            prompt=lambda cm: "Enter your preferred RPC URL. (base_sepolia/polygon_amoy/optimism_sepolia/arbitrum_sepolia)",
-            is_secure=False,
-            is_connect_key=True,
-            prompt_on_new=True,
-        )
-    )
-
-    @validator("chain", pre=True)
-    def validate_exchange(cls, v: str):
-        """Used for client-friendly error output."""
-        if isinstance(v, str):
-            ret = validate_testnet_exchange(v)
-            if ret is not None:
-                raise ValueError(ret)
-        return v
-
-    @validator("rpc_url", pre=True)
-    def validate_rpc(cls, v: str):
-        """Used for client-friendly error output."""
-        if isinstance(v, str):
-            ret = validate_testnet_rpc(v)
-            if ret is not None:
-                raise ValueError(ret)
-        return v
 
     class Config:
-        title = "tegro_testnet"
+        title = "tegro_arbitrum_testnet"
 
 
-OTHER_DOMAINS_KEYS = {"tegro_testnet": TegroTestnetConfigMap.construct()}
+OTHER_DOMAINS_KEYS = {"tegro_arbitrum_testnet": TegroTestnetConfigMap.construct(),
+                      "tegro_polygon_testnet": TegroTestnetConfigMap.construct(),
+                      "tegro_base_testnet": TegroTestnetConfigMap.construct(),
+                      "tegro_optimism_testnet": TegroTestnetConfigMap.construct()}
 
 
 def _time():

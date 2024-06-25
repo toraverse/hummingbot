@@ -36,19 +36,6 @@ class TegroAPIOrderBookDataSource(OrderBookTrackerDataSource):
         self._domain: Optional[str] = domain
         self._api_factory = api_factory
 
-    @property
-    def chain(self):
-        if self._connector.chain_id is not None and self._domain == "tegro":
-            if self._connector.chain_id in CONSTANTS.MAINNET_CHAIN_IDS.keys():
-                chain = CONSTANTS.MAINNET_CHAIN_IDS[self._connector.chain_id]
-            else:
-                chain = CONSTANTS.CHAIN_ID
-        elif self._connector.chain_id is not None and self._domain == "tegro_testnet":
-            chain = CONSTANTS.TESTNET_CHAIN_IDS[self._connector.chain_id]
-        else:
-            chain = CONSTANTS.CHAIN_ID
-        return chain
-
     @staticmethod
     async def trading_pair_associated_to_exchange_symbol(symbol: str) -> str:
         symbol_map = await TegroExchange._initialize_trading_pair_symbol_map()
@@ -67,10 +54,10 @@ class TegroAPIOrderBookDataSource(OrderBookTrackerDataSource):
 
         :return: the response from the exchange (JSON dictionary)
         """
-
+        await self._connector._initialize_verified_market()
         params = {
-            "chain_id": self.chain,
-            "market_symbol": await self._connector.exchange_symbol_associated_to_pair(trading_pair=trading_pair),
+            "chain_id": self._connector.chain,
+            "market_id": self._connector._market["data"]["id"],
         }
 
         rest_assistant = await self._api_factory.get_rest_assistant()
@@ -113,6 +100,9 @@ class TegroAPIOrderBookDataSource(OrderBookTrackerDataSource):
             return await self._connector._api_request(
                 path_url = CONSTANTS.MARKET_LIST_PATH_URL.format(self._connector.chain),
                 method=RESTMethod.GET,
+                params={
+                    "page": 1, "sort_order": "desc", "sort_by": "volume", "page_size": 20, "verified": "true"
+                },
                 limit_id=CONSTANTS.MARKET_LIST_PATH_URL,
                 new_url = True,
                 is_auth_required=False
@@ -131,7 +121,7 @@ class TegroAPIOrderBookDataSource(OrderBookTrackerDataSource):
             new_symbol = f"{symb[0]}-{symb[1]}"
             if new_symbol in self._trading_pairs:
                 address = str(market["base_contract_address"])
-                param.append(f"{self.chain}/{address}")
+                param.append(f"{self._connector.chain}/{address}")
                 break
         addr = param[0]
         return addr

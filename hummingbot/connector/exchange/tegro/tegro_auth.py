@@ -13,10 +13,9 @@ class TegroAuth(AuthBase):
     Auth class required by Tegro API
     """
 
-    def __init__(self, api_key: str, api_secret: str, chain_id: str):
+    def __init__(self, api_key: str, api_secret: str):
         self._api_key: str = api_key
         self._api_secret: str = api_secret
-        self._chain_id: str = chain_id
 
     def sign_inner(self, data):
         """

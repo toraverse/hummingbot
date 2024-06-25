@@ -10,7 +10,7 @@ class TegroOrderBookTests(TestCase):
         snapshot_message = TegroOrderBook.snapshot_message_from_exchange(
             msg={
                 "timestamp": 1708817206,
-                "Asks": [
+                "asks": [
                     {
                         "price": 6097.00,
                         "price_float": 0.61,
@@ -18,7 +18,7 @@ class TegroOrderBookTests(TestCase):
                         "quantity_float": 0.16
                     },
                 ],
-                "Bids": [
+                "bids": [
                     {
                         "price": 712,
                         "price_float": 0.0712,
@@ -37,12 +37,12 @@ class TegroOrderBookTests(TestCase):
         self.assertEqual(1708817206, snapshot_message.update_id)
         self.assertEqual(-1, snapshot_message.trade_id)
         self.assertEqual(1, len(snapshot_message.bids))
-        self.assertEqual(0.0712, snapshot_message.bids[0].price)
-        self.assertEqual(0.5, snapshot_message.bids[0].amount)
+        self.assertEqual(712.0, snapshot_message.bids[0].price)
+        self.assertEqual(5000.0, snapshot_message.bids[0].amount)
         self.assertEqual(1708817206, snapshot_message.bids[0].update_id)
         self.assertEqual(1, len(snapshot_message.asks))
-        self.assertEqual(0.61, snapshot_message.asks[0].price)
-        self.assertEqual(0.16, snapshot_message.asks[0].amount)
+        self.assertEqual(6097.0, snapshot_message.asks[0].price)
+        self.assertEqual(1600, snapshot_message.asks[0].amount)
         self.assertEqual(1708817206, snapshot_message.asks[0].update_id)
 
     def test_diff_message_from_exchange(self):

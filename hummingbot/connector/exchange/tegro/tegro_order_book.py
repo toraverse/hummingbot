@@ -16,8 +16,8 @@ class TegroOrderBook(OrderBook):
 
         trading_pair = msg.get("trading_pair", "")
         time = msg.get("timestamp", "")
-        bids = cls.parse_entries(msg.get("Bids", []))
-        asks = cls.parse_entries(msg.get("Asks", []))
+        bids = cls.parse_entries(msg.get("bids", []))
+        asks = cls.parse_entries(msg.get("asks", []))
 
         return OrderBookMessage(OrderBookMessageType.SNAPSHOT, {
             "trading_pair": trading_pair,
@@ -31,8 +31,8 @@ class TegroOrderBook(OrderBook):
         parsed_entries = []
         if entries is not None:
             for entry in entries:
-                price = Decimal(entry.get('price_float', 0))
-                quantity = Decimal(entry.get('quantity_float', 0))
+                price = Decimal(entry.get('price', 0))
+                quantity = Decimal(entry.get('quantity', 0))
                 if price is not None and quantity is not None:
                     parsed_entry = [float(price), float(quantity)]
                     parsed_entries.append(parsed_entry)
