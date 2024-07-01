@@ -57,7 +57,7 @@ class TegroAPIOrderBookDataSource(OrderBookTrackerDataSource):
         await self._connector._initialize_verified_market()
         params = {
             "chain_id": self._connector.chain,
-            "market_id": self._connector._market["data"]["id"],
+            "market_id": self._connector._market["id"],
         }
 
         rest_assistant = await self._api_factory.get_rest_assistant()
@@ -115,7 +115,7 @@ class TegroAPIOrderBookDataSource(OrderBookTrackerDataSource):
 
     def _process_market_data(self, market_data):
         param = []
-        for market in market_data["data"]:
+        for market in market_data:
             s = market["symbol"]
             symb = s.split("_")
             new_symbol = f"{symb[0]}-{symb[1]}"
