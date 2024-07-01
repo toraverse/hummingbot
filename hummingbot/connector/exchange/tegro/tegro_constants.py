@@ -113,16 +113,15 @@ ABI = {
 
 Node_URLS = {
     "tegro": "https://mainnet.base.org",
-    "tegro_arbitrum_testnet": "https://sepolia-rollup.arbitrum.io/rpc",
+    "tegro_base_testnet": "https://sepolia.base.org",
     "tegro_polygon_testnet": "https://rpc-amoy.polygon.technology",
-    "tegro_optimism_testnet": "https://sepolia.optimism.io",
-    "tegro_base_testnet": "https://sepolia.base.org"
+    "tegro_optimism_testnet": "https://sepolia.optimism.io"
+
 }
 
 TESTNET_CHAIN_IDS = {
-    "polygon": 80002,
-    "arbitrum": 421614,
     "base": 84532,
+    "polygon": 80002,
     "optimism": 11155420
 }
 

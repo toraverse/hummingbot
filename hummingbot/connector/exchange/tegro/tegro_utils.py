@@ -115,31 +115,27 @@ class TegroConfigMap(BaseConnectorConfigMap):
 KEYS = TegroConfigMap.construct()
 
 OTHER_DOMAINS = [
-    "tegro_arbitrum_testnet",
     "tegro_polygon_testnet",
     "tegro_base_testnet",
     "tegro_optimism_testnet"
 ]
 OTHER_DOMAINS_PARAMETER = {
-    "tegro_arbitrum_testnet": "tegro_arbitrum_testnet",
     "tegro_polygon_testnet": "tegro_polygon_testnet",
     "tegro_base_testnet": "tegro_base_testnet",
     "tegro_optimism_testnet": "tegro_optimism_testnet"}
 OTHER_DOMAINS_EXAMPLE_PAIR = {
-    "tegro_arbitrum_testnet": "BTC-USDT",
     "tegro_polygon_testnet": "BTC-USDT",
     "tegro_base_testnet": "BTC-USDT",
     "tegro_optimism_testnet": "BTC-USDT"
 }
 OTHER_DOMAINS_DEFAULT_FEES = {
-    "tegro_arbitrum_testnet": DEFAULT_FEES,
     "tegro_polygon_testnet": DEFAULT_FEES,
     "tegro_base_testnet": DEFAULT_FEES,
     "tegro_optimism_testnet": DEFAULT_FEES}
 
 
 class TegroTestnetConfigMap(BaseConnectorConfigMap):
-    connector: str = Field(default="tegro_arbitrum_testnet", const=True, client_data=None)
+    connector: str = Field(default="tegro_optimism_testnet", const=True, client_data=None)
     tegro_api_key: SecretStr = Field(
         default=...,
         client_data=ClientFieldData(
@@ -160,11 +156,10 @@ class TegroTestnetConfigMap(BaseConnectorConfigMap):
     )
 
     class Config:
-        title = "tegro_arbitrum_testnet"
+        title = "tegro_optimism_testnet"
 
 
-OTHER_DOMAINS_KEYS = {"tegro_arbitrum_testnet": TegroTestnetConfigMap.construct(),
-                      "tegro_polygon_testnet": TegroTestnetConfigMap.construct(),
+OTHER_DOMAINS_KEYS = {"tegro_polygon_testnet": TegroTestnetConfigMap.construct(),
                       "tegro_base_testnet": TegroTestnetConfigMap.construct(),
                       "tegro_optimism_testnet": TegroTestnetConfigMap.construct()}
 
