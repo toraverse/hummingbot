@@ -965,7 +965,7 @@ class TegroExchange(ExchangePyBase):
         for trading_pair in self.trading_pairs:
             symbol = await self.exchange_symbol_associated_to_pair(trading_pair=trading_pair)
         for market in self._markets:
-            if market["chain_id"] == self.chain and market["symbol"] == symbol:
+            if market["chainId"] == self.chain and market["symbol"] == symbol:
                 id.append(market)
         try:
             self._market = await self._api_request(
