@@ -56,9 +56,9 @@ SIDE_BUY = "buy"
 SIDE_SELL = "sell"
 
 ORDER_STATE = {
-    "Active": OrderState.OPEN,
-    "Matched": OrderState.FILLED,
-    "Cancelled": OrderState.CANCELED,
+    "open": OrderState.OPEN,
+    "closed": OrderState.FILLED,
+    "cancelled": OrderState.CANCELED,
 }
 
 MAINNET_CHAIN_IDS = {
@@ -128,22 +128,11 @@ TESTNET_CHAIN_IDS = {
 TRADE_EVENT_TYPE = "trade_updated"
 DIFF_EVENT_TYPE = "order_book_diff"
 
-WS_METHODS = {
-    "ORDER_PLACED": "order_placed",
-    "ORDER_SUBMITTED": "order_submitted",
-    "ORDER_BOOK_UPDATE": "order_book_updated",
-    "ORDER_BOOK_UPDATE_DIFF": "order_book_diff",
-    "TRADES_CREATE": "trade_created",
-    "TRADES_UPDATE": "trade_updated",
-    "ORDER_SUBMITTED_ONCHAIN": "order_submitted_onchain",
-}
-
 USER_METHODS = {
-    "ORDER_PLACED": "order_placed",
-    "ORDER_SUBMITTED": "order_submitted",
     "TRADES_CREATE": "user_trade_created",
     "TRADES_UPDATE": "user_trade_updated",
-    "ORDER_SUBMITTED_ONCHAIN": "order_submitted_onchain",
+    "ORDER_SUBMITTED": "order_submitted",
+    "ORDER_TRADE_PROCESSED": "order_trade_processed"
 }
 
 HEARTBEAT_TIME_INTERVAL = 30.0
