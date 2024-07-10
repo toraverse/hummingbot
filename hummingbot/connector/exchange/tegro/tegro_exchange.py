@@ -30,7 +30,7 @@ from hummingbot.core.data_type.user_stream_tracker_data_source import UserStream
 
 # from hummingbot.core.event.events import  OrderCancelledEvent
 from hummingbot.core.event.events import MarketEvent, OrderFilledEvent
-from hummingbot.core.utils.async_utils import safe_gather
+from hummingbot.core.utils.async_utils import safe_ensure_future, safe_gather
 from hummingbot.core.utils.estimate_fee import build_trade_fee
 
 # from hummingbot.core.utils.gateway_config_utils import SUPPORTED_CHAINS
@@ -43,6 +43,7 @@ if TYPE_CHECKING:
 s_logger = None
 s_decimal_0 = Decimal(0)
 s_float_NaN = float("nan")
+MAX_UINT256 = 2**256 - 1
 
 
 class TegroExchange(ExchangePyBase):
@@ -69,6 +70,7 @@ class TegroExchange(ExchangePyBase):
         self._trading_pairs = trading_pairs
         self._last_trades_poll_tegro_timestamp = 1.0
         super().__init__(client_config_map)
+        self._allowance_polling_task: Optional[asyncio.Task] = None
         self.real_time_balance_update = False
 
     @staticmethod
@@ -239,70 +241,103 @@ class TegroExchange(ExchangePyBase):
         )
         return fee
 
-    def get_allowance(self, exchange_con_addr, con_addr, addr):
-        w3 = Web3(Web3.HTTPProvider(self.rpc_node_url))
-        w3.middleware_onion.inject(geth_poa_middleware, layer=0)
-        allowance_abi = CONSTANTS.ABI["allowance"]
-        contract = w3.eth.contract(con_addr, abi = allowance_abi)
-        try:
-            function_call = contract.functions.allowance(addr, exchange_con_addr)
-            transaction = function_call.call({
-                "abi": allowance_abi,
-                "address": con_addr,
-                "args": [addr, exchange_con_addr],
-                "functionName": "allowance"
-            })
-            return transaction
-        except Exception as e:
-            self.logger("Error occurred while getting allowance:", e)
-            return None
+    async def start_network(self):
+        await super().start_network()
+        self._allowance_polling_task = safe_ensure_future(self.approve_allowance())
 
-    async def approve_allowance(
-        self,
-        exchange_con_addr: str,
-        is_buy: bool,
-        order_amount: Decimal,
-        base_token: str,
-        quote_token: str
-    ):
+    async def stop_network(self):
+        await super().stop_network()
+        if self._allowance_polling_task is not None:
+            self._allowance_polling_task.cancel()
+            self._allowance_polling_task = None
+
+    async def get_chain_list(self):
+        account_info = await self._api_request(
+            method=RESTMethod.GET,
+            path_url=CONSTANTS.CHAIN_LIST,
+            limit_id=CONSTANTS.CHAIN_LIST,
+            is_auth_required=False)
+
+        return account_info
+
+    async def approve_allowance(self):
+        """
+        Approves the allowance for a specific token on a decentralized exchange.
+
+        This function retrieves the trading pairs, determines the associated
+        symbols, and approves the maximum allowance for each token in the
+        trading pairs on the specified exchange contract.
+
+        Returns:
+        dict or None: The transaction receipt if the transaction is successful, otherwise None.
+        """
+        exchange_con_addr = ""
+        token_list = []
+        data = {}
+
+        # Fetching trading pairs and determining associated symbols
+        for trading_pair in self.trading_pairs:
+            symbol = await self.exchange_symbol_associated_to_pair(trading_pair=trading_pair)
+            base, quote = symbol.split("_")
+            token_list.append(base)
+            token_list.append(quote)
+
+        # Setting up Web3
         w3 = Web3(Web3.HTTPProvider(self.rpc_node_url))
         w3.middleware_onion.inject(geth_poa_middleware, layer=0)
         approve_abi = CONSTANTS.ABI["approve"]
-        # allowance_abi = CONSTANTS.ABI["allowance"]
-        data = {}
+
+        # Fetching token and chain information
         tokens = await self.tokens_info()
-        ty = "quote" if is_buy else "base"
+        chain_data = await self.get_chain_list()
+        for chain in chain_data:
+            if int(chain["id"]) == self.chain:
+                exchange_con_addr = chain["exchange_contract"]
+                break
+
+        # Organizing token data
         for t in tokens:
-            if t["address"] == base_token:
-                data["base"] = t
-            elif t["address"] == quote_token:
-                data["quote"] = t
-        con_addr = Web3.to_checksum_address(data[ty]["address"])
-        bal = Decimal(data[ty]["balance"])
-        decimal = Decimal(data[ty]["decimal"])
-        addr = Web3.to_checksum_address(self.api_key)
-        factor = Decimal(10) ** decimal
-        contract = w3.eth.contract(con_addr, abi=approve_abi)
-        avai_allowance: Decimal = self.get_allowance(exchange_con_addr, con_addr, addr)
-        approved_amount = bal * factor
-        allowance = avai_allowance / factor
-        # Get nonce
-        nonce = w3.eth.get_transaction_count(addr)
-        # Prepare transaction parameters
-        tx_params = {
-            "gas": w3.eth.estimate_gas,
-            "nonce": nonce
-        }
-        amount = round(approved_amount)
-        if order_amount > allowance:
+            data[t["symbol"]] = {
+                "type": t["type"],
+                "address": t["address"],
+                "decimal": t["decimal"]
+            }
+
+        # Loop through each token and approve allowance
+        for token in token_list:
+            con_addr = Web3.to_checksum_address(data[token]["address"])
+            addr = Web3.to_checksum_address(self.api_key)
+            contract = w3.eth.contract(con_addr, abi=approve_abi)
+
+            # Get nonce
+            nonce = w3.eth.get_transaction_count(addr)
+
+            # Prepare transaction parameters
+            tx_params = {
+                "from": addr,
+                "nonce": nonce,
+                "gasPrice": w3.eth.gas_price,
+            }
+
             try:
-                approval_contract = contract.functions.approve(exchange_con_addr, amount).build_transaction(tx_params)
+                # Estimate gas for the approval transaction
+                gas_estimate = contract.functions.approve(exchange_con_addr, MAX_UINT256).estimate_gas({
+                    "from": addr,
+                })
+                tx_params["gas"] = gas_estimate
+
+                # Building, signing, and sending the approval transaction
+                approval_contract = contract.functions.approve(exchange_con_addr, MAX_UINT256).build_transaction(tx_params)
                 signed_tx = w3.eth.account.sign_transaction(approval_contract, self.secret_key)
                 txn_hash = w3.eth.send_raw_transaction(signed_tx.rawTransaction)
                 txn_receipt = w3.eth.wait_for_transaction_receipt(txn_hash)
+
+                # Return the transaction receipt
                 return txn_receipt
+
             except Exception as e:
-                self.logger("Error occurred while approving allowance:", e)
+                # Log the error and return None
+                self.logger.error("Error occurred while approving allowance: %s", str(e))
                 return None
 
     async def _place_order(self,
@@ -314,12 +349,6 @@ class TegroExchange(ExchangePyBase):
                            price: Decimal,
                            **kwargs) -> Tuple[str, float]:
         transaction_data = await self.generate_typed_data(amount, order_type, price, trade_type, trading_pair)
-        order_amount = amount
-        exchange_con_addr = Web3.to_checksum_address(transaction_data["sign_data"]["domain"]["verifyingContract"])
-        is_buy = transaction_data["sign_data"]["message"]["isBuy"]
-        base_token = transaction_data["sign_data"]["message"]["baseToken"]
-        quote_token = transaction_data["sign_data"]["message"]["quoteToken"]
-        await self.approve_allowance(exchange_con_addr, is_buy, order_amount, base_token, quote_token)
         s = await self.exchange_symbol_associated_to_pair(trading_pair=trading_pair)
         symbol: str = s.replace('-', '_')
         domain_data = transaction_data["sign_data"]["domain"]
@@ -353,17 +382,21 @@ class TegroExchange(ExchangePyBase):
                 is_auth_required = False,
                 limit_id = CONSTANTS.ORDER_PATH_URL,
             )
-            o_id = str(data["order_id"])
-            transact_time = data["timestamp"] * 1e-3
         except IOError as e:
             error_description = str(e)
+            insufficient_allowance = ("insufficient allowance" in error_description)
             is_server_overloaded = ("status is 503" in error_description
                                     and "Unknown error, please check your request or try again later." in error_description)
+            if insufficient_allowance:
+                await self.approve_allowance()
             if is_server_overloaded:
                 o_id = "Unknown"
                 transact_time = int(datetime.now(timezone.utc).timestamp() * 1e3)
             else:
                 raise
+        else:
+            o_id = str(data["order_id"])
+            transact_time = data["timestamp"] * 1e-3
         return o_id, transact_time
 
     async def generate_typed_data(self, amount, order_type, price, trade_type, trading_pair) -> Dict[str, Any]:

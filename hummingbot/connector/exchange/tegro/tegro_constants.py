@@ -11,9 +11,6 @@ DOMAIN = EXCHANGE_NAME
 HBOT_ORDER_ID_PREFIX = "HB"
 MAX_ORDER_ID_LEN = 10
 
-# Base URL
-# https://api.testnet.tegro.com/v2
-
 TEGRO_BASE_URL = "https://api.tegro.com/api/"
 TESTNET_BASE_URL = "https://api.testnet.tegro.com/api/"
 TEGRO_WS_URL = "wss://api.tegro.com/api/v1/events/"
