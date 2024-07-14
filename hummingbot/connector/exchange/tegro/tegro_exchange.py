@@ -597,32 +597,47 @@ class TegroExchange(ExchangePyBase):
         )
         return trade_update
 
-    def _process_trade_message(self, trade: Dict[str, Any], client_order_id: Optional[str] = None):
-        client_order_id = trade["id"] is None and '' or str(trade["id"])
-        tracked_order = self._order_tracker.all_fillable_orders.get(client_order_id)
+    async def _process_trade_message(self, trade: Dict[str, Any], client_order_id: Optional[str] = None):
+        # Initialize client_order_id to an empty string
+        client_id = ""
+        # Fetch user trades asynchronously
+        trade_res = await self._user_trades()
+
+        if trade_res:
+            datas = trade_res[0]
+
+            # Loop through the trades to find a matching trade id
+            for data in datas:
+                if trade["id"] == data["id"]:
+                    client_id = data["order_id"]
+                    break  # Exit the loop once a match is found
+
+        # Retrieve the tracked order based on the client_order_id
+        tracked_order = self._order_tracker.all_fillable_orders_by_exchange_order_id.get(client_id)
         if tracked_order is None:
-            self.logger().debug(f"Ignoring trade message with id {client_order_id}: not in in_flight_orders.")
+            self.logger().debug(f"Ignoring trade message with id {client_id}: not in in_flight_orders.")
         else:
+            # Create a trade update and process it
             trade_update = self._create_trade_update_with_order_fill_data(
                 order_fill=trade,
-                order=tracked_order)
+                order=tracked_order
+            )
             self._order_tracker.process_trade_update(trade_update)
 
     def _create_order_update_with_order_status_data(self, order_status: Dict[str, Any], order: InFlightOrder):
         formatted_time = order_status['timestamp'] * 1e-3,
-        client_order_id = str(order_status.get("order_id", ""))
         order_update = OrderUpdate(
             trading_pair=order.trading_pair,
             update_timestamp=int(formatted_time),
             new_state=CONSTANTS.ORDER_STATE[order_status["status"]],
-            client_order_id=client_order_id,
+            client_order_id=order.client_order_id,
             exchange_order_id=str(order_status["order_id"]),
         )
         return order_update
 
     def _process_order_message(self, raw_msg: Dict[str, Any]):
         client_order_id = str(raw_msg.get("order_id", ""))
-        tracked_order = self._order_tracker.all_updatable_orders.get(client_order_id)
+        tracked_order = self._order_tracker.all_fillable_orders_by_exchange_order_id.get(client_order_id)
         if not tracked_order:
             self.logger().debug(f"Ignoring order message with id {client_order_id}: not in in_flight_orders.")
             return
@@ -643,11 +658,11 @@ class TegroExchange(ExchangePyBase):
 
     async def _user_trades(self):
         # Gather user orders for each trading pair concurrently
-        tasks = await self._users_orders()
+        task = await self._users_orders()
         user_trades = []
-        if len(tasks) > 0:
+        if len(task) > 0:
             orders_results = []
-            orders_results.append(tasks)
+            orders_results.append(task)
 
             # Collect order IDs from the results
             order_ids = []

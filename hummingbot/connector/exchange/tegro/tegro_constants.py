@@ -113,7 +113,6 @@ Node_URLS = {
     "tegro_base_testnet": "https://sepolia.base.org",
     "tegro_polygon_testnet": "https://rpc-amoy.polygon.technology",
     "tegro_optimism_testnet": "https://sepolia.optimism.io"
-
 }
 
 TESTNET_CHAIN_IDS = {

@@ -28,7 +28,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
     def setUpClass(cls) -> None:
         super().setUpClass()
         cls.chain = "base"
-        cls.rpc_url = "base_mainnet"
+        cls.rpc_url = "tegro_base_testnet"
         cls.market_id = "8453_0x4200000000000000000000000000000000000006_0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"  # noqa: mock
         cls.tegro_api_key = "somePassPhrase"
         cls.tegro_api_secret = "someSecretKey"
@@ -412,11 +412,10 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
         client_config_map = ClientConfigAdapter(ClientConfigMap())
         return TegroExchange(
             client_config_map=client_config_map,
-            chain=self.chain,  # noqa: mock
-            rpc_url=self.rpc_url,  # noqa: mock
             tegro_api_key=self.tegro_api_key,  # noqa: mock
             tegro_api_secret=self.tegro_api_secret,  # noqa: mock
             trading_pairs=[self.trading_pair],
+            domain=CONSTANTS.DEFAULT_DOMAIN
         )
 
     def validate_auth_credentials_present(self, request_call: RequestCall):
@@ -687,61 +686,6 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
                 "txHash": "0x2f0d41ced1c7d21fe114235dfe363722f5f7026c21441f181ea39768a151c205",  # noqa: mock
             }
         }
-
-    @aioresponses()
-    @patch("hummingbot.connector.time_synchronizer.TimeSynchronizer._current_seconds_counter")
-    def test_update_time_synchronizer_successfully(self, mock_api, seconds_counter_mock):
-        request_sent_event = asyncio.Event()
-        seconds_counter_mock.side_effect = [0, 0, 0]
-
-        self.exchange._time_synchronizer.clear_time_offset_ms_samples()
-        url = web_utils.private_rest_url(CONSTANTS.SERVER_TIME_PATH_URL)
-        regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
-
-        response = {
-            "asks": [
-                {
-                    "price": "3591213560",
-                    "quantity": "5000000000000000",
-                    "price_float": 3591.21356,
-                    "quantity_float": 0.005
-                }
-            ],
-            "bids": [
-                {
-                    "price": "3544020850",
-                    "quantity": "5643307657177017",
-                    "price_float": 3544.02085,
-                    "quantity_float": 0.005643
-                },
-            ],
-            "timestamp": 1718543004
-        }
-
-        mock_api.get(regex_url,
-                     body=json.dumps(response),
-                     callback=lambda *args, **kwargs: request_sent_event.set())
-
-        self.async_run_with_timeout(self.exchange._update_time_synchronizer())
-
-        self.assertEqual(response["timestamp"] * 1e-3, self.exchange._time_synchronizer.time())
-
-    @aioresponses()
-    def test_update_time_synchronizer_failure_is_logged(self, mock_api):
-        request_sent_event = asyncio.Event()
-
-        url = web_utils.private_rest_url(CONSTANTS.SERVER_TIME_PATH_URL)
-        regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
-
-        response = {"code": -1121, "msg": "Dummy error"}
-
-        mock_api.get(regex_url,
-                     body=json.dumps(response),
-                     callback=lambda *args, **kwargs: request_sent_event.set())
-
-        self.async_run_with_timeout(self.exchange._update_time_synchronizer())
-
-        self.assertTrue(self.is_logged("NETWORK", "Error getting server time."))
 
     @aioresponses()
     def test_update_time_synchronizer_raises_cancelled_error(self, mock_api):
@@ -1079,25 +1023,6 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
 
         self.assertEqual(result, expected_client_order_id)
 
-    def test_time_synchronizer_related_request_error_detection(self):
-        exception = IOError("Error executing request POST https://api.testnet.tegro.com/v2/chain/list HTTP status is 400. "
-                            "Error: {'code':-1021,'msg':'Timestamp for this request is outside of the recvWindow.'}")
-        self.assertTrue(self.exchange._is_request_exception_related_to_time_synchronizer(exception))
-
-        exception = IOError("Error executing request POST https://api.testnet.tegro.com/v2/chain/list HTTP status is 400. "
-                            "Error: {'code':-1021,'msg':'Timestamp for this request was 1000ms ahead of the server's "
-                            "time.'}")
-        self.assertTrue(self.exchange._is_request_exception_related_to_time_synchronizer(exception))
-
-        exception = IOError("Error executing request POST https://api.testnet.tegro.com/v2/chain/list HTTP status is 400. "
-                            "Error: {'code':-1022,'msg':'Timestamp for this request was 1000ms ahead of the server's "
-                            "time.'}")
-        self.assertFalse(self.exchange._is_request_exception_related_to_time_synchronizer(exception))
-
-        exception = IOError("Error executing request POST https://api.testnet.tegro.com/v2/chain/list HTTP status is 400. "
-                            "Error: {'code':-1021,'msg':'Other error.'}")
-        self.assertFalse(self.exchange._is_request_exception_related_to_time_synchronizer(exception))
-
     @aioresponses()
     def test_place_order_manage_server_overloaded_error_unkown_order(self, mock_api):
         self.exchange._set_current_timestamp(1640780000)
@@ -1157,154 +1082,150 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
             ))
 
     def _order_cancelation_request_successful_mock_response(self, order: InFlightOrder) -> Any:
-        return {
-            "Order Cancel request is successful."
-        }
+        return [
+            {
+                "cancelled_order_ids": str(order.exchange_order_id),
+            }
+        ]
 
     def _order_status_request_completely_filled_mock_response(self, order: InFlightOrder) -> Any:
         return {
-            "orderId": str(order.exchange_order_id),
-            "orderHash": "4729a024f63830a3adb39727df240e310012e62e81963ed0869ed244434d7248",  # noqa: mock
-            "marketId": "8453_0x4200000000000000000000000000000000000006_0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",  # noqa: mock
+            "order_id": str(order.exchange_order_id),
+            "order_hash": "3e45ac4a7c67ab9fd9392c6bdefb0b3de8e498811dd8ac934bbe8cf2c26f72a7", # noqa: mock
+            "market_id": "11155420_0xcf9eb56c69ddd4f9cfdef880c828de7ab06b4614_0x7bda2a5ee22fe43bc1ab2bcba97f7f9504645c08", # noqa: mock
             "side": order.order_type.name.lower(),
-            "baseCurrency": self.base_asset,
-            "quoteCurrency": self.quote_asset,
-            "baseDecimals": 18,
-            "quoteDecimals": 6,
-            "contractAddress": "0x4200000000000000000000000000000000000006",  # noqa: mock
+            "base_currency": self.base_asset,
+            "quote_currency": self.quote_asset,
+            "contract_address": "0xcf9eb56c69ddd4f9cfdef880c828de7ab06b4614", # noqa: mock
             "quantity": str(order.amount),
-            "quantityFilled": str(order.amount),
-            "price": int(order.price),
-            "avgPrice": 3200,
-            "pricePrecision": "3200000000",
-            "volumePrecision": "807774356440516",
-            "total": 2.584878,
-            "fee": 0,
-            "status": "Matched",
-            "cancel_reason": "",
-            "time": "2024-06-08T13:04:36.034604Z"
+            "quantity_filled": "0",
+            "quantity_pending": "0",
+            "price": str(order.price),
+            "avg_price": "3490",
+            "price_precision": "3490000000000000000000",
+            "volume_precision": "3999900000000000000",
+            "total": "13959.651",
+            "fee": "0",
+            "status": "matched",
+            "cancel": {
+                "reason": "",
+                "code": 0
+            },
+            "timestamp": 1719964423
         }
 
     def _order_status_request_canceled_mock_response(self, order: InFlightOrder) -> Any:
         return {
-            "orderId": str(order.exchange_order_id),
-            "orderHash": "4729a024f63830a3adb39727df240e310012e62e81963ed0869ed244434d7248",  # noqa: mock
-            "marketId": "8453_0x4200000000000000000000000000000000000006_0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",  # noqa: mock
+            "order_id": str(order.exchange_order_id),
+            "order_hash": "3e45ac4a7c67ab9fd9392c6bdefb0b3de8e498811dd8ac934bbe8cf2c26f72a7", # noqa: mock
+            "market_id": "11155420_0xcf9eb56c69ddd4f9cfdef880c828de7ab06b4614_0x7bda2a5ee22fe43bc1ab2bcba97f7f9504645c08", # noqa: mock
             "side": order.order_type.name.lower(),
-            "baseCurrency": self.base_asset,
-            "quoteCurrency": self.quote_asset,
-            "baseDecimals": 18,
-            "quoteDecimals": 6,
-            "contractAddress": "0x4200000000000000000000000000000000000006",  # noqa: mock
+            "base_currency": self.base_asset,
+            "quote_currency": self.quote_asset,
+            "contract_address": "0xcf9eb56c69ddd4f9cfdef880c828de7ab06b4614", # noqa: mock
             "quantity": str(order.amount),
-            "quantityFilled": str(order.amount),
-            "price": int(order.price),
-            "avgPrice": 3200,
-            "pricePrecision": "3200000000",
-            "volumePrecision": "807774356440516",
-            "total": 2.584878,
-            "fee": 0,
-            "status": "Cancelled",
-            "cancel_reason": "user_cancel",
-            "time": "2024-06-08T13:04:36.034604Z"
+            "quantity_filled": "0",
+            "quantity_pending": "0",
+            "price": str(order.price),
+            "avg_price": "3490",
+            "price_precision": "3490000000000000000000",
+            "volume_precision": "3999900000000000000",
+            "total": "13959.651",
+            "fee": "0",
+            "status": "cancelled",
+            "cancel": {
+                "reason": "user_cancel",
+                "code": 611
+            },
+            "timestamp": 1719964423
         }
 
     def _order_status_request_open_mock_response(self, order: InFlightOrder) -> Any:
         return {
-            "orderId": str(order.exchange_order_id),
-            "orderHash": "4729a024f63830a3adb39727df240e310012e62e81963ed0869ed244434d7248",  # noqa: mock
-            "marketId": "8453_0x4200000000000000000000000000000000000006_0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",  # noqa: mock
+            "order_id": str(order.exchange_order_id),
+            "order_hash": "3e45ac4a7c67ab9fd9392c6bdefb0b3de8e498811dd8ac934bbe8cf2c26f72a7", # noqa: mock
+            "market_id": "11155420_0xcf9eb56c69ddd4f9cfdef880c828de7ab06b4614_0x7bda2a5ee22fe43bc1ab2bcba97f7f9504645c08", # noqa: mock
             "side": order.order_type.name.lower(),
-            "baseCurrency": self.base_asset,
-            "quoteCurrency": self.quote_asset,
-            "baseDecimals": 18,
-            "quoteDecimals": 6,
-            "contractAddress": "0x4200000000000000000000000000000000000006",  # noqa: mock
+            "base_currency": self.base_asset,
+            "quote_currency": self.quote_asset,
+            "contract_address": "0xcf9eb56c69ddd4f9cfdef880c828de7ab06b4614", # noqa: mock
             "quantity": str(order.amount),
-            "quantityFilled": str(order.amount),
-            "price": int(order.price),
-            "avgPrice": 3200,
-            "pricePrecision": "3200000000",
-            "volumePrecision": "807774356440516",
-            "total": 2.584878,
-            "fee": 0,
-            "status": "Active",
-            "cancel_reason": "user_cancel",
-            "time": "2024-06-08T13:04:36.034604Z"
+            "quantity_filled": "0",
+            "quantity_pending": "0",
+            "price": str(order.price),
+            "avg_price": "3490",
+            "price_precision": "3490000000000000000000",
+            "volume_precision": "3999900000000000000",
+            "total": "13959.651",
+            "fee": "0",
+            "status": "open",
+            "cancel": {
+                "reason": "",
+                "code": 0
+            },
+            "timestamp": 1720458258
         }
 
     def _order_status_request_partially_filled_mock_response(self, order: InFlightOrder) -> Any:
         return {
-            "orderId": str(order.exchange_order_id),
-            "orderHash": "4729a024f63830a3adb39727df240e310012e62e81963ed0869ed244434d7248",  # noqa: mock
-            "marketId": "8453_0x4200000000000000000000000000000000000006_0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",  # noqa: mock
+            "order_id": str(order.exchange_order_id),
+            "order_hash": "3e45ac4a7c67ab9fd9392c6bdefb0b3de8e498811dd8ac934bbe8cf2c26f72a7", # noqa: mock
+            "market_id": "11155420_0xcf9eb56c69ddd4f9cfdef880c828de7ab06b4614_0x7bda2a5ee22fe43bc1ab2bcba97f7f9504645c08", # noqa: mock
             "side": order.order_type.name.lower(),
-            "baseCurrency": self.base_asset,
-            "quoteCurrency": self.quote_asset,
-            "baseDecimals": 18,
-            "quoteDecimals": 6,
-            "contractAddress": "0x4200000000000000000000000000000000000006",  # noqa: mock
+            "base_currency": self.base_asset,
+            "quote_currency": self.quote_asset,
+            "contract_address": "0xcf9eb56c69ddd4f9cfdef880c828de7ab06b4614", # noqa: mock
             "quantity": str(order.amount),
-            "quantityFilled": str(order.amount),
-            "price": int(order.price),
-            "avgPrice": 3200,
-            "pricePrecision": "3200000000",
-            "volumePrecision": "807774356440516",
-            "total": 2.584878,
-            "fee": 0,
+            "quantity_filled": "0",
+            "quantity_pending": "0",
+            "price": str(order.price),
+            "avg_price": "3490",
+            "price_precision": "3490000000000000000000",
+            "volume_precision": "3999900000000000000",
+            "total": "13959.651",
+            "fee": "0",
             "status": "Partial",
-            "cancel_reason": "user_cancel",
-            "time": "2024-06-08T13:04:36.034604Z"
+            "cancel": {
+                "reason": "",
+                "code": 0
+            },
+            "timestamp": 1719964423
         }
 
     def _order_fills_request_partial_fill_mock_response(self, order: InFlightOrder):
         return [
             {
+                "id": self.expected_fill_trade_id,
                 "orderId": str(order.exchange_order_id),
-                "orderHash": "4729a024f63830a3adb39727df240e310012e62e81963ed0869ed244434d7248",  # noqa: mock
-                "marketId": "8453_0x4200000000000000000000000000000000000006_0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",  # noqa: mock
-                "side": order.order_type.name.lower(),
-                "baseCurrency": self.base_asset,
-                "quoteCurrency": self.expected_fill_fee.flat_fees[0].token,
-                "baseDecimals": 18,
-                "quoteDecimals": 6,
-                "contractAddress": "0x4200000000000000000000000000000000000006",  # noqa: mock
-                "quantity": str(order.amount),
-                "quantityFilled": str(order.amount),
-                "price": int(order.price),
-                "avgPrice": 3200,
-                "pricePrecision": "3200000000",
-                "volumePrecision": "807774356440516",
-                "total": 2.584878,
+                "symbol": self.exchange_symbol_for_tokens(order.base_asset, order.quote_asset),
+                "market_id": "80002_0xcabd9e0ea17583d57a972c00a1413295e7c69246_0x7551122e441edbf3fffcbcf2f7fcc636b636482b", # noqa: mock
+                "price": str(self.expected_partial_fill_price),
+                "amount": str(self.expected_partial_fill_amount),
+                "state": "partial",
+                "tx_hash": "0x4e240028f16196f421ab266b7ea95acaee4b7fc648e97c19a0f93b3c8f0bb32d", # noqa: mock
+                "timestamp": 1719485745,
                 "fee": str(self.expected_fill_fee.flat_fees[0].amount),
-                "status": "Partial",
-                "cancel_reason": "user_cancel",
-                "time": "2024-06-08T13:04:36.034604Z"
+                "taker_type": order.order_type.name.lower(),
+                "taker": "0x1870f03410fdb205076718337e9763a91f029280", # noqa: mock
+                "maker": "0x1870f03410fdb205076718337e9763a91f029280" # noqa: mock
             }
         ]
 
     def _order_fills_request_full_fill_mock_response(self, order: InFlightOrder):
         return [
             {
+                "id": self.expected_fill_trade_id,
                 "orderId": str(order.exchange_order_id),
-                "orderHash": "4729a024f63830a3adb39727df240e310012e62e81963ed0869ed244434d7248",  # noqa: mock
-                "marketId": "8453_0x4200000000000000000000000000000000000006_0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",  # noqa: mock
-                "side": order.order_type.name.lower(),
-                "baseCurrency": self.base_asset,
-                "quoteCurrency": self.expected_fill_fee.flat_fees[0].token,
-                "baseDecimals": 18,
-                "quoteDecimals": 6,
-                "contractAddress": "0x4200000000000000000000000000000000000006",  # noqa: mock
-                "quantity": str(order.amount),
-                "quantityFilled": str(order.amount),
+                "symbol": self.exchange_symbol_for_tokens(order.base_asset, order.quote_asset),
+                "market_id": "80002_0xcabd9e0ea17583d57a972c00a1413295e7c69246_0x7551122e441edbf3fffcbcf2f7fcc636b636482b", # noqa: mock
                 "price": int(order.price),
-                "avgPrice": 3200,
-                "pricePrecision": "3200000000",
-                "volumePrecision": "807774356440516",
-                "total": 2.584878,
+                "amount": str(order.amount),
+                "state": "success",
+                "tx_hash": "0x4e240028f16196f421ab266b7ea95acaee4b7fc648e97c19a0f93b3c8f0bb32d", # noqa: mock
+                "timestamp": 1719485745,
                 "fee": str(self.expected_fill_fee.flat_fees[0].amount),
-                "status": "Matched",
-                "cancel_reason": "user_cancel",
-                "time": "2024-06-08T13:04:36.034604Z"
+                "taker_type": order.order_type.name.lower(),
+                "taker": "0x1870f03410fdb205076718337e9763a91f029280", # noqa: mock
+                "maker": "0x1870f03410fdb205076718337e9763a91f029280" # noqa: mock
             }
         ]
