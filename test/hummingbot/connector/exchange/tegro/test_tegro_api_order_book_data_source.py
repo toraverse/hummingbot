@@ -207,7 +207,7 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
         mock_api.get(regex_url, body=json.dumps(response))
         return response
 
-    @ aioresponses()
+    @aioresponses()
     def test_get_new_order_book_successful(self, mock_api):
         url = web_utils.public_rest_url(path_url=CONSTANTS.SNAPSHOT_PATH_URL, domain=self.domain)
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
@@ -234,7 +234,7 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
         self.assertEqual(50000, asks[0].amount)
         self.assertEqual(expected_update_id, asks[0].update_id)
 
-    @ aioresponses()
+    @aioresponses()
     def test_get_new_order_book_raises_exception(self, mock_api):
         url = web_utils.public_rest_url(path_url=CONSTANTS.SNAPSHOT_PATH_URL, domain=self.domain)
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
