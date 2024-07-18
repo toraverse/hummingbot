@@ -1,16 +1,17 @@
 import unittest
+
 from eth_utils import keccak
 
 from hummingbot.connector.exchange.tegro.tegro_data_source import (
-    get_primary_type,
-    encode_field,
-    find_type_dependencies,
-    encode_type,
-    hash_type,
     encode_data,
-    hash_struct,
+    encode_field,
+    encode_type,
+    find_type_dependencies,
+    get_primary_type,
+    hash_domain,
     hash_eip712_message,
-    hash_domain
+    hash_struct,
+    hash_type,
 )
 
 
@@ -87,7 +88,3 @@ class TestEIP712(unittest.TestCase):
         }
         hashed_domain = hash_domain(domain_data)
         self.assertTrue(isinstance(hashed_domain, bytes))
-
-
-if __name__ == "__main__":
-    unittest.main()

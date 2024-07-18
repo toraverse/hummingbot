@@ -1,9 +1,9 @@
 import asyncio
 import json
 import re
+import time
 from datetime import datetime
 from decimal import Decimal
-import time
 from typing import Any, Callable, List, Optional, Tuple
 from unittest.mock import AsyncMock, patch
 
@@ -496,7 +496,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
             mock_api: aioresponses,
             callback: Optional[Callable] = lambda *args, **kwargs: None) -> str:
         """
-        :return: the URL configured
+        return the URL configured
         """
         url = web_utils.public_rest_url(path_url=CONSTANTS.ORDER_LIST.format(self.chain))
         response = self._order_status_request_open_mock_response(order=order)

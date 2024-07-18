@@ -1,8 +1,10 @@
 import unittest
+
 from eth_utils.curried import ValidationError
 from hexbytes import HexBytes
+
 from hummingbot.connector.exchange.tegro.tegro_data_source import hash_domain, hash_eip712_message
-from hummingbot.connector.exchange.tegro.tegro_messages import encode_typed_data, SignableMessage
+from hummingbot.connector.exchange.tegro.tegro_messages import SignableMessage, encode_typed_data
 
 
 class TestEncodeTypedData(unittest.TestCase):
@@ -85,7 +87,3 @@ class TestEncodeTypedData(unittest.TestCase):
 
         with self.assertRaises(ValidationError):
             encode_typed_data(full_message=invalid_full_message)
-
-
-if __name__ == "__main__":
-    unittest.main()
