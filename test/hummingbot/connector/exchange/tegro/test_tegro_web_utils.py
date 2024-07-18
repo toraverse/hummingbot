@@ -4,46 +4,20 @@ from typing import Awaitable
 
 import hummingbot.connector.exchange.tegro.tegro_constants as CONSTANTS
 import hummingbot.connector.exchange.tegro.tegro_web_utils as web_utils
-from hummingbot.connector.exchange.tegro.tegro_web_utils import TegroRESTPreProcessor
 from hummingbot.connector.time_synchronizer import TimeSynchronizer
-from hummingbot.core.web_assistant.connections.data_types import RESTMethod, RESTRequest
 from hummingbot.core.web_assistant.web_assistants_factory import WebAssistantsFactory
 
 
-class TegroWebUtilsUnitTests(unittest.TestCase):
+class TegroUtilTestCases(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
         super().setUpClass()
         cls.ev_loop = asyncio.get_event_loop()
 
-        cls.pre_processor = TegroRESTPreProcessor()
-
     def async_run_with_timeout(self, coroutine: Awaitable, timeout: float = 1):
         ret = self.ev_loop.run_until_complete(asyncio.wait_for(coroutine, timeout))
         return ret
-
-    def test_tegro_rest_pre_processor_non_post_request(self):
-        request: RESTRequest = RESTRequest(
-            method=RESTMethod.GET,
-            url="/TEST_URL",
-        )
-
-        result_request: RESTRequest = self.async_run_with_timeout(self.pre_processor.pre_process(request))
-
-        self.assertIn("Content-Type", result_request.headers)
-        self.assertEqual(result_request.headers["Content-Type"], "application/x-www-form-urlencoded")
-
-    def test_tegro_rest_pre_processor_post_request(self):
-        request: RESTRequest = RESTRequest(
-            method=RESTMethod.POST,
-            url="/TEST_URL",
-        )
-
-        result_request: RESTRequest = self.async_run_with_timeout(self.pre_processor.pre_process(request))
-
-        self.assertIn("Content-Type", result_request.headers)
-        self.assertEqual(result_request.headers["Content-Type"], "application/json")
 
     def test_rest_url_main_domain(self):
         path_url = "/TEST_PATH_URL"
