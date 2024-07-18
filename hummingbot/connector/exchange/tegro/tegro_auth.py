@@ -32,7 +32,7 @@ class TegroAuth(AuthBase):
         the required parameter in the request header.
         :param request: the request to be configured for authenticated interaction
         """
-        if request.method == RESTMethod.POST:
+        if request.method == RESTMethod.POST and request.data is not None:
             request.data = self.add_auth_to_params(params=json.loads(request.data) if request.data is not None else {})
         else:
             request.params = self.add_auth_to_params(params=request.params)
@@ -49,25 +49,15 @@ class TegroAuth(AuthBase):
     async def ws_authenticate(self, request: WSRequest) -> WSRequest:
         return request  # pass-through
 
-    def _generate_auth_dict(self) -> Dict[str, Any]:
-        """
-        Generates a dictionary with all required information for the authentication process
-        :return: a dictionary of authentication info including the request signature
-        """
-        addr = self._api_key
-        address = addr.lower()
-        structured_data = messages.encode_defunct(text=address)
-        signature = self.sign_inner(structured_data)
-
-        return signature
-
     def add_auth_to_params(self,
                            params: Dict[str, Any]):
         request_params = OrderedDict(params or {})
 
-        signature = self._generate_auth_dict()
+        addr = self._api_key
+        address = addr.lower()
+        structured_data = messages.encode_defunct(text=address)
+        signature = self.sign_inner(structured_data)
         request_params["signature"] = signature
-
         return request_params
 
     def header_for_authentication(self) -> Dict[str, Any]:

@@ -27,8 +27,7 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
         super().setUpClass()
         cls.ev_loop = asyncio.get_event_loop()
         cls.base_asset = "WETH"
-        cls.quote_asset = "USDC"
-        cls.tegro_api_key = "",
+        cls.quote_asset = "USDT"
         cls.trading_pair = f"{cls.base_asset}-{cls.quote_asset}"
         cls.ex_trading_pair = cls.base_asset + cls.quote_asset
         cls.domain = "tegro_polygon_testnet"
@@ -40,6 +39,7 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
         self.mocking_assistant = NetworkMockingAssistant()
 
         client_config_map = ClientConfigAdapter(ClientConfigMap())
+        self.chain = "80002"
         self.connector = TegroExchange(
             client_config_map=client_config_map,
             tegro_api_key="",
@@ -90,7 +90,7 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
 
     def _trade_update_event(self):
         resp = {
-            "action": "trade_updated",
+            "action": "user_trade_updated",
             "data": {
                 "amount": 1,
                 "id": "68a22415-3f6b-4d27-8996-1cbf71d89e5f",
@@ -115,17 +115,13 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
                 "bids": [
                     {
                         "price": "60.9700",
-                        "price_float": 0.0061,
                         "quantity": "1600",
-                        "quantity_float": 0.16
                     },
                 ],
                 "asks": [
                     {
                         "price": "71.29",
-                        "price_float": 0.0071,
                         "quantity": "50000",
-                        "quantity_float": 5
                     },
                 ]
             }}
@@ -137,77 +133,81 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
             "bids": [
                 {
                     "price": "6097.00",
-                    "price_float": 0.61,
                     "quantity": "1600",
-                    "quantity_float": 0.16
                 },
             ],
             "asks": [
                 {
                     "price": "7129",
-                    "price_float": 0.0713,
                     "quantity": "50000",
-                    "quantity_float": 5
                 },
             ]
         }
         return resp
 
-    def _market_list_response(self):
-        resp = {
-            "data": [
-                {
-                    "id": "80002_0x6b94a36d6ff05886d44b3dafabdefe85f09563ba_0x7551122e441edbf3fffcbcf2f7fcc636b636482b",
-                    "base_contract_address": "0x4200000000000000000000000000000000000006",
-                    "quote_contract_address": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
-                    "chain_id": 80002,
-                    "symbol": "WETH_USDC",
-                    "state": "verified",
-                    "base_symbol": "WETH",
-                    "quote_symbol": "USDC",
-                    "base_decimal": 18,
-                    "quote_decimal": 6,
-                    "logo": "",
-                    "ticker": {
-                        "base_volume": 0.1229889063497669,
-                        "quote_volume": 381.2849481633775,
-                        "price": 3200,
-                        "price_change_24h": 3.46,
-                        "price_high_24h": 3200,
-                        "price_low_24h": 3081.311117,
-                        "ask_low": 3081.311117,
-                        "bid_high": 3200
-                    }
-                },
-                {
-                    "id": "8453_0x4ed4e862860bed51a9570b96d89af5e1b0efefed_0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
-                    "base_contract_address": "0x4ed4e862860bed51a9570b96d89af5e1b0efefed",
-                    "quote_contract_address": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
-                    "chain_id": 8453,
-                    "symbol": "DEGEN_USDC",
-                    "state": "verified",
-                    "base_symbol": "DEGEN",
-                    "quote_symbol": "USDC",
-                    "base_decimal": 18,
-                    "quote_decimal": 6,
-                    "logo": "",
-                    "ticker": {
-                        "base_volume": 64737.548559999996,
-                        "quote_volume": 1060.1629772124318,
-                        "price": 0.016584,
-                        "price_change_24h": -3.7,
-                        "price_high_24h": 0.0172,
-                        "price_low_24h": 0.015788,
-                        "ask_low": 0.015788,
-                        "bid_high": 0.016313
-                    }
+    def market_list_response(self):
+        [
+            {
+                "id": "80002_0x6b94a36d6ff05886d44b3dafabdefe85f09563ba_0x7551122e441edbf3fffcbcf2f7fcc636b636482b",
+                "symbol": "WETH_USDT",
+                "chainId": 80002,
+                "state": "verified",
+                "base_contract_address": "0x6b94a36d6ff05886d44b3dafabdefe85f09563ba",
+                "base_symbol": "WETH",
+                "base_decimal": 18,
+                "base_precision": 18,
+                "quote_contract_address": "0x7551122e441edbf3fffcbcf2f7fcc636b636482b",
+                "quote_symbol": "USDT",
+                "quote_decimal": 6,
+                "quote_precision": 18,
+                "ticker": {
+                    "base_volume": 4.868354267233523,
+                    "quote_volume": 6042.99235,
+                    "price": 3300,
+                    "price_change_24h": 0,
+                    "price_high_24h": 6000,
+                    "price_low_24h": 9,
+                    "ask_low": 9,
+                    "bid_high": 3400
                 }
-            ],
-            "success": True
-        }
-        return resp
+            },
+            {
+                "id": "80002_0xcabd9e0ea17583d57a972c00a1413295e7c69246_0x7551122e441edbf3fffcbcf2f7fcc636b636482b",
+                "symbol": "FREN_USDT",
+                "chainId": 80002,
+                "state": "verified",
+                "base_contract_address": "0xcabd9e0ea17583d57a972c00a1413295e7c69246",
+                "base_symbol": "FREN",
+                "base_decimal": 18,
+                "base_precision": 2,
+                "quote_contract_address": "0x7551122e441edbf3fffcbcf2f7fcc636b636482b",
+                "quote_symbol": "USDT",
+                "quote_decimal": 6,
+                "quote_precision": 8,
+                "ticker": {
+                    "base_volume": 26.97,
+                    "quote_volume": 399.2570379999999,
+                    "price": 15,
+                    "price_change_24h": 0,
+                    "price_high_24h": 16.12345679,
+                    "price_low_24h": 14,
+                    "ask_low": 14,
+                    "bid_high": 15
+                }
+            }
+        ]
 
     @aioresponses()
+    def test_fetch_market_data(
+            self,
+            mock_api) -> str:
+        url = web_utils.private_rest_url(CONSTANTS.MARKET_LIST_PATH_URL)
+        regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
+        response = self.market_list_response()
+        mock_api.get(regex_url, body=json.dumps(response))
+        return response
+
+    @ aioresponses()
     def test_get_new_order_book_successful(self, mock_api):
         url = web_utils.public_rest_url(path_url=CONSTANTS.SNAPSHOT_PATH_URL, domain=self.domain)
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
@@ -226,15 +226,15 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
         bids = list(order_book.bid_entries())
         asks = list(order_book.ask_entries())
         self.assertEqual(1, len(bids))
-        self.assertEqual(0.61, bids[0].price)
-        self.assertEqual(0.16, bids[0].amount)
+        self.assertEqual(6097, bids[0].price)
+        self.assertEqual(1600, bids[0].amount)
         self.assertEqual(expected_update_id, bids[0].update_id)
         self.assertEqual(1, len(asks))
-        self.assertEqual(0.0713, asks[0].price)
-        self.assertEqual(5, asks[0].amount)
+        self.assertEqual(7129, asks[0].price)
+        self.assertEqual(50000, asks[0].amount)
         self.assertEqual(expected_update_id, asks[0].update_id)
 
-    @aioresponses()
+    @ aioresponses()
     def test_get_new_order_book_raises_exception(self, mock_api):
         url = web_utils.public_rest_url(path_url=CONSTANTS.SNAPSHOT_PATH_URL, domain=self.domain)
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
@@ -269,7 +269,7 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
         print(sent_subscription_messages)
         expected_trade_subscription = {
             "action": "subscribe",
-            "channelId": f"{CONSTANTS.CHAIN_ID}/0x4200000000000000000000000000000000000006"  # noqa: mock
+            "channelId": f"{CONSTANTS.CHAIN_ID}/0x6b94a36d6ff05886d44b3dafabdefe85f09563ba"  # noqa: mock
         }
         self.assertEqual(expected_trade_subscription, sent_subscription_messages[0])
 

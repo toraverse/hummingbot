@@ -47,6 +47,7 @@ TEGRO_USER_ORDER_PATH_URL = "v1/trading/market/orders/user/{}"
 WS_HEARTBEAT_TIME_INTERVAL = 30
 
 API_LIMIT_REACHED_ERROR_MESSAGE = "TOO MANY REQUESTS"
+SECONDS_TO_WAIT_TO_RECEIVE_MESSAGE = 10
 
 # Tegro params
 SIDE_BUY = "buy"
@@ -54,7 +55,7 @@ SIDE_SELL = "sell"
 
 ORDER_STATE = {
     "open": OrderState.OPEN,
-    "closed": OrderState.FILLED,
+    "completed": OrderState.FILLED,
     "cancelled": OrderState.CANCELED,
 }
 

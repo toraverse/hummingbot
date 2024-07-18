@@ -441,8 +441,7 @@ class TegroExchange(ExchangePyBase):
             )
         except IOError as e:
             error_description = str(e)
-            is_not_active = ("status is 400" in error_description
-                             and "Orders not found" in error_description)
+            is_not_active = ("Orders not found" in error_description)
             if is_not_active:
                 self.logger().debug(f"The order {order_id} does not exist on tegro."
                                     f"No cancelation needed.")
@@ -510,23 +509,23 @@ class TegroExchange(ExchangePyBase):
                 }
             }
         """
-        for exchange_info_dict in exchange_info:
-            retval = []
-            if tegro_utils.is_exchange_information_valid(exchange_info=exchange_info_dict):
-                try:
-                    trading_pair = await self.trading_pair_associated_to_exchange_symbol(symbol=exchange_info_dict.get("symbol"))
-                    min_order_size = Decimal(0.0001)
-                    min_amount_inc = Decimal(0.0001)
-                    # step_size = Decimal(str(10 ** exchange_info.get("base_precision")))
-                    # price_size = Decimal(str(10 ** -len(exchange_info["ticker"].get("price_high_24h").split('.')[1])))
-                    retval.append(
-                        TradingRule(trading_pair,
-                                    min_order_size=min_order_size,
-                                    min_price_increment=Decimal(0.280),
-                                    min_base_amount_increment=min_amount_inc))
-                except Exception:
-                    self.logger().exception(f"Error parsing the trading pair rule {exchange_info_dict}. Skipping.")
-            return retval
+        trading_pair_rules = exchange_info
+        retval = []
+        for rule in filter(tegro_utils.is_exchange_information_valid, trading_pair_rules):
+            try:
+                trading_pair = await self.trading_pair_associated_to_exchange_symbol(symbol=rule.get("symbol"))
+                min_order_size = Decimal(0.0001)
+                min_price_inc = Decimal(f"1e-{rule['quote_precision']}")
+                step_size = Decimal(f'1e-{rule["base_precision"]}')
+                # price_size = Decimal(str(10 ** -len(exchange_info["ticker"].get("price_high_24h").split('.')[1])))
+                retval.append(
+                    TradingRule(trading_pair,
+                                min_order_size=min_order_size,
+                                min_price_increment=Decimal(min_price_inc),
+                                min_base_amount_increment=Decimal(step_size)))
+            except Exception:
+                self.logger().exception(f"Error parsing the trading pair rule {trading_pair_rules}. Skipping.")
+        return retval
 
     async def _status_polling_loop_fetch_updates(self):
         await self._update_order_fills_from_trades()
@@ -625,10 +624,9 @@ class TegroExchange(ExchangePyBase):
             self._order_tracker.process_trade_update(trade_update)
 
     def _create_order_update_with_order_status_data(self, order_status: Dict[str, Any], order: InFlightOrder):
-        formatted_time = order_status['timestamp'] * 1e-3,
         order_update = OrderUpdate(
             trading_pair=order.trading_pair,
-            update_timestamp=int(formatted_time),
+            update_timestamp=tegro_utils.datetime_val_or_now(order_status["time"], on_error_return_now=True).timestamp(),
             new_state=CONSTANTS.ORDER_STATE[order_status["status"]],
             client_order_id=order.client_order_id,
             exchange_order_id=str(order_status["order_id"]),

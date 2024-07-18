@@ -36,6 +36,20 @@ class TegroAPIOrderBookDataSource(OrderBookTrackerDataSource):
         self._domain: Optional[str] = domain
         self._api_factory = api_factory
 
+    @property
+    def chain_id(self):
+        return self._domain.split("_")[1] if "testnet" in self._domain else self._domain
+
+    @property
+    def chain(self):
+        chain = ""
+        if self._domain == "tegro":
+            # In this case tegro is default to base mainnet
+            chain = CONSTANTS.MAINNET_CHAIN_IDS[self._domain]
+        elif "testnet" in self._domain:
+            chain = CONSTANTS.TESTNET_CHAIN_IDS[self.chain_id]
+        return chain
+
     @staticmethod
     async def trading_pair_associated_to_exchange_symbol(symbol: str) -> str:
         symbol_map = await TegroExchange._initialize_trading_pair_symbol_map()
@@ -56,7 +70,7 @@ class TegroAPIOrderBookDataSource(OrderBookTrackerDataSource):
         """
         await self._connector._initialize_verified_market()
         params = {
-            "chain_id": self._connector.chain,
+            "chain_id": self.chain,
             "market_id": self._connector._market["id"],
         }
 
@@ -97,16 +111,16 @@ class TegroAPIOrderBookDataSource(OrderBookTrackerDataSource):
 
     async def _fetch_market_data(self):
         try:
-            return await self._connector._api_request(
-                path_url = CONSTANTS.MARKET_LIST_PATH_URL.format(self._connector.chain),
+            data = await self._connector._api_request(
+                path_url = CONSTANTS.MARKET_LIST_PATH_URL.format(self.chain),
                 method=RESTMethod.GET,
                 params={
                     "page": 1, "sort_order": "desc", "sort_by": "volume", "page_size": 20, "verified": "true"
                 },
                 limit_id=CONSTANTS.MARKET_LIST_PATH_URL,
-                new_url = True,
                 is_auth_required=False
             )
+            return data
         except Exception:
             self.logger().error(
                 "Unexpected error occurred fetching market data...", exc_info=True
@@ -114,17 +128,16 @@ class TegroAPIOrderBookDataSource(OrderBookTrackerDataSource):
             raise
 
     def _process_market_data(self, market_data):
-        param = []
+        symbol = ""
         for market in market_data:
             s = market["symbol"]
             symb = s.split("_")
             new_symbol = f"{symb[0]}-{symb[1]}"
             if new_symbol in self._trading_pairs:
                 address = str(market["base_contract_address"])
-                param.append(f"{self._connector.chain}/{address}")
+                symbol = f"{self.chain}/{address}"
                 break
-        addr = param[0]
-        return addr
+        return symbol
 
     async def _connected_websocket_assistant(self) -> WSAssistant:
         ws: WSAssistant = await self._api_factory.get_ws_assistant()

@@ -13,17 +13,13 @@ class TegroOrderBookTests(TestCase):
                 "asks": [
                     {
                         "price": 6097.00,
-                        "price_float": 0.61,
                         "quantity": 1600,
-                        "quantity_float": 0.16
                     },
                 ],
                 "bids": [
                     {
                         "price": 712,
-                        "price_float": 0.0712,
                         "quantity": 5000,
-                        "quantity_float": 0.5
                     },
 
                 ]
@@ -55,17 +51,13 @@ class TegroOrderBookTests(TestCase):
                     "bids": [
                         {
                             "price": 6097.00,
-                            "price_float": 0.61,
                             "quantity": 1600,
-                            "quantity_float": 0.16
                         },
                     ],
                     "asks": [
                         {
                             "price": 712,
-                            "price_float": 0.0712,
                             "quantity": 5000,
-                            "quantity_float": 0.5
                         },
                     ]
                 }},
@@ -77,12 +69,12 @@ class TegroOrderBookTests(TestCase):
         self.assertEqual(1640000000.0, diff_msg.timestamp)
         self.assertEqual(-1, diff_msg.trade_id)
         self.assertEqual(1, len(diff_msg.bids))
-        self.assertEqual(0.61, diff_msg.bids[0].price)
-        self.assertEqual(0.16, diff_msg.bids[0].amount)
+        self.assertEqual(6097.00, diff_msg.bids[0].price)
+        self.assertEqual(1600, diff_msg.bids[0].amount)
         self.assertEqual(1708817206, diff_msg.bids[0].update_id)
         self.assertEqual(1, len(diff_msg.asks))
-        self.assertEqual(0.0712, diff_msg.asks[0].price)
-        self.assertEqual(0.5, diff_msg.asks[0].amount)
+        self.assertEqual(712, diff_msg.asks[0].price)
+        self.assertEqual(5000, diff_msg.asks[0].amount)
         self.assertEqual(1708817206, diff_msg.asks[0].update_id)
 
     def test_trade_message_from_exchange(self):
@@ -91,12 +83,13 @@ class TegroOrderBookTests(TestCase):
             "data": {
                 "amount": 573,
                 "id": "68a22415-3f6b-4d27-8996-1cbf71d89e5f",
-                "marketId": "",
+                "is_buyer_maker": True,
+                "marketId": "11155420_0xcf9eb56c69ddd4f9cfdef880c828de7ab06b4614_0x7bda2a5ee22fe43bc1ab2bcba97f7f9504645c08",
                 "price": 0.1,
                 "state": "success",
                 "symbol": "KRYPTONITE_USDT",
-                "takerType": "sell",
-                "time": 1708817206,
+                "taker": "0x0a0cdc90cc16a0f3e67c296c8c0f7207cbdc0f4e",
+                "timestamp": 1708817206,
                 "txHash": "0x2f0d41ced1c7d21fe114235dfe363722f5f7026c21441f181ea39768a151c205",  # noqa: mock
             }
         }

@@ -55,8 +55,8 @@ class TegroOrderBook(OrderBook):
         return OrderBookMessage(OrderBookMessageType.DIFF, {
             "trading_pair": msg["trading_pair"],
             "update_id": msg["data"]["timestamp"],
-            "bids": [[float(entry['price_float']), entry['quantity_float']] for entry in msg["data"]["bids"]],
-            "asks": [[float(entry['price_float']), entry['quantity_float']] for entry in msg["data"]["asks"]],
+            "bids": [[float(entry['price']), entry['quantity']] for entry in msg["data"]["bids"]],
+            "asks": [[float(entry['price']), entry['quantity']] for entry in msg["data"]["asks"]],
         }, timestamp=timestamp * 1e-3)
 
     @classmethod

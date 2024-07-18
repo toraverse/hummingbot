@@ -11,12 +11,11 @@ from hummingbot.core.web_assistant.connections.data_types import RESTMethod, RES
 class TegroAuthTests(TestCase):
     def setUp(self) -> None:
         super().setUp()
-        self.chain_id = 80001
         self.api_key = "testApiKey"
         self.secret_key = (
             "13e56ca9cceebf1f33065c2c5376ab38570a114bc1b003b60d838f92be9d7930"  # noqa: mock
         )
-        self.auth = TegroAuth(api_key=self.api_key, api_secret=self.secret_key, chain_id=self.chain_id)
+        self.auth = TegroAuth(api_key=self.api_key, api_secret=self.secret_key)
 
     def async_run_with_timeout(self, coroutine):
         return asyncio.get_event_loop().run_until_complete(
