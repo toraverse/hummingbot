@@ -148,15 +148,15 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
     def market_list_response(self):
         [
             {
-                "id": "80002_0x6b94a36d6ff05886d44b3dafabdefe85f09563ba_0x7551122e441edbf3fffcbcf2f7fcc636b636482b",
+                "id": "80002_0x6b94a36d6ff05886d44b3dafabdefe85f09563ba_0x7551122e441edbf3fffcbcf2f7fcc636b636482b",  # noqa: mock
                 "symbol": "WETH_USDT",
                 "chainId": 80002,
                 "state": "verified",
-                "base_contract_address": "0x6b94a36d6ff05886d44b3dafabdefe85f09563ba",
+                "base_contract_address": "0x6b94a36d6ff05886d44b3dafabdefe85f09563ba",  # noqa: mock
                 "base_symbol": "WETH",
                 "base_decimal": 18,
                 "base_precision": 18,
-                "quote_contract_address": "0x7551122e441edbf3fffcbcf2f7fcc636b636482b",
+                "quote_contract_address": "0x7551122e441edbf3fffcbcf2f7fcc636b636482b",  # noqa: mock
                 "quote_symbol": "USDT",
                 "quote_decimal": 6,
                 "quote_precision": 18,
@@ -172,15 +172,15 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
                 }
             },
             {
-                "id": "80002_0xcabd9e0ea17583d57a972c00a1413295e7c69246_0x7551122e441edbf3fffcbcf2f7fcc636b636482b",
+                "id": "80002_0xcabd9e0ea17583d57a972c00a1413295e7c69246_0x7551122e441edbf3fffcbcf2f7fcc636b636482b",  # noqa: mock
                 "symbol": "FREN_USDT",
                 "chainId": 80002,
                 "state": "verified",
-                "base_contract_address": "0xcabd9e0ea17583d57a972c00a1413295e7c69246",
+                "base_contract_address": "0xcabd9e0ea17583d57a972c00a1413295e7c69246",  # noqa: mock
                 "base_symbol": "FREN",
                 "base_decimal": 18,
                 "base_precision": 2,
-                "quote_contract_address": "0x7551122e441edbf3fffcbcf2f7fcc636b636482b",
+                "quote_contract_address": "0x7551122e441edbf3fffcbcf2f7fcc636b636482b",  # noqa: mock
                 "quote_symbol": "USDT",
                 "quote_decimal": 6,
                 "quote_precision": 8,
