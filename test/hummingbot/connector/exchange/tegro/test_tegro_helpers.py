@@ -1,13 +1,12 @@
 import unittest
+
 from hummingbot.connector.exchange.tegro.tegro_data_source import (
-    is_array_type,
     is_0x_prefixed_hexstr,
+    is_array_type,
     parse_core_array_type,
-    parse_parent_array_type
+    parse_parent_array_type,
 )
-from hummingbot.connector.exchange.tegro.tegro_helpers import (
-    _get_eip712_solidity_types
-)
+from hummingbot.connector.exchange.tegro.tegro_helpers import _get_eip712_solidity_types
 
 
 class TestSolidityTypes(unittest.TestCase):
@@ -32,7 +31,7 @@ class TestSolidityTypes(unittest.TestCase):
     def test_is_0x_prefixed_hexstr(self):
         self.assertTrue(is_0x_prefixed_hexstr("0x123456"))
         self.assertFalse(is_0x_prefixed_hexstr("123456"))
-        self.assertFalse(is_0x_prefixed_hexstr("0x12345G"))  # Not a valid hex string
+        self.assertFalse(is_0x_prefixed_hexstr("0x12345G"))
         self.assertFalse(is_0x_prefixed_hexstr("hello"))
 
     def test_parse_core_array_type(self):
