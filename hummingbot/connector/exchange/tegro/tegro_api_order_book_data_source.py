@@ -68,10 +68,10 @@ class TegroAPIOrderBookDataSource(OrderBookTrackerDataSource):
 
         :return: the response from the exchange (JSON dictionary)
         """
-        await self._connector._initialize_verified_market()
+        data = await self._connector._initialize_verified_market()
         params = {
             "chain_id": self.chain,
-            "market_id": self._connector._market["id"],
+            "market_id": data["id"],
         }
 
         rest_assistant = await self._api_factory.get_rest_assistant()
@@ -109,6 +109,18 @@ class TegroAPIOrderBookDataSource(OrderBookTrackerDataSource):
             )
             raise
 
+    def _process_market_data(self, market_data):
+        symbol = ""
+        for market in market_data:
+            s = market["symbol"]
+            symb = s.split("_")
+            new_symbol = f"{symb[0]}-{symb[1]}"
+            if new_symbol in self._trading_pairs:
+                address = str(market["base_contract_address"])
+                symbol = f"{self.chain}/{address}"
+                break
+        return symbol
+
     async def _fetch_market_data(self):
         try:
             data = await self._connector._api_request(
@@ -126,18 +138,6 @@ class TegroAPIOrderBookDataSource(OrderBookTrackerDataSource):
                 "Unexpected error occurred fetching market data...", exc_info=True
             )
             raise
-
-    def _process_market_data(self, market_data):
-        symbol = ""
-        for market in market_data:
-            s = market["symbol"]
-            symb = s.split("_")
-            new_symbol = f"{symb[0]}-{symb[1]}"
-            if new_symbol in self._trading_pairs:
-                address = str(market["base_contract_address"])
-                symbol = f"{self.chain}/{address}"
-                break
-        return symbol
 
     async def _connected_websocket_assistant(self) -> WSAssistant:
         ws: WSAssistant = await self._api_factory.get_ws_assistant()
@@ -173,7 +173,7 @@ class TegroAPIOrderBookDataSource(OrderBookTrackerDataSource):
     def _channel_originating_message(self, event_message: Dict[str, Any]) -> str:
         channel = ""
         if "action" in event_message:
-            event_channel = event_message.get("data")
+            event_channel = event_message.get("action")
             if event_channel == CONSTANTS.TRADE_EVENT_TYPE:
                 channel = self._trade_messages_queue_key
             if event_channel == CONSTANTS.DIFF_EVENT_TYPE:

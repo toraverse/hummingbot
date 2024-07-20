@@ -55,7 +55,7 @@ SIDE_SELL = "sell"
 
 ORDER_STATE = {
     "open": OrderState.OPEN,
-    "completed": OrderState.FILLED,
+    "closed": OrderState.FILLED,
     "cancelled": OrderState.CANCELED,
 }
 
@@ -128,6 +128,7 @@ DIFF_EVENT_TYPE = "order_book_diff"
 USER_METHODS = {
     "TRADES_CREATE": "user_trade_created",
     "TRADES_UPDATE": "user_trade_updated",
+    "ORDER_PLACED": "order_placed",
     "ORDER_SUBMITTED": "order_submitted",
     "ORDER_TRADE_PROCESSED": "order_trade_processed"
 }

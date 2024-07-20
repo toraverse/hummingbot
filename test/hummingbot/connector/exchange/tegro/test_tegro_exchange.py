@@ -2,17 +2,16 @@ import asyncio
 import json
 import re
 import time
-from datetime import datetime
 from decimal import Decimal
 from typing import Any, Callable, List, Optional, Tuple
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from aioresponses import aioresponses
 from aioresponses.core import RequestCall
 
 from hummingbot.client.config.client_config_map import ClientConfigMap
 from hummingbot.client.config.config_helpers import ClientConfigAdapter
-from hummingbot.connector.exchange.tegro import tegro_constants as CONSTANTS, tegro_utils, tegro_web_utils as web_utils
+from hummingbot.connector.exchange.tegro import tegro_constants as CONSTANTS, tegro_web_utils as web_utils
 from hummingbot.connector.exchange.tegro.tegro_exchange import TegroExchange
 from hummingbot.connector.test_support.exchange_connector_test import AbstractExchangeConnectorTests
 from hummingbot.connector.trading_rule import TradingRule
@@ -28,16 +27,21 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
     @classmethod
     def setUpClass(cls) -> None:
         super().setUpClass()
-        cls.chain = "80002"
-        cls.rpc_url = "tegro_polygon_testnet"
-        cls.market_id = "80002_0x6b94a36d6ff05886d44b3dafabdefe85f09563ba_0x7551122e441edbf3fffcbcf2f7fcc636b636482b"  # noqa: mock
         cls.tegro_api_key = "somePassPhrase"
         cls.tegro_api_secret = "someSecretKey"
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.trading_pair = "WETH-USDT"
+        self.chain_id = "polygon"
+        self.chain = "80002"
+        self.rpc_url = "http://mock-rpc-url"
+        self.market_id = "80002_0x6b94a36d6ff05886d44b3dafabdefe85f09563ba_0x7551122e441edbf3fffcbcf2f7fcc636b636482b"  # noqa: mock
 
     @property
     def all_symbols_url(self):
         url = web_utils.public_rest_url(path_url=CONSTANTS.EXCHANGE_INFO_PATH_LIST_URL.format(self.chain), domain=self.exchange._domain)
-        url = f"{url}?verified=true"
+        url = f"{url}?page=1&sort_order=desc&sort_by=volume&page_size=20&verified=true"
         return url
 
     @property
@@ -279,7 +283,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
             "fee": 0,
             "status": "Active",
             "cancel_reason": "",
-            "time": "2024-06-12T09:32:27.390651186Z"
+            "timestamp": "2024-06-12T09:32:27.390651186Z"
         }
 
     @property
@@ -555,6 +559,55 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
         mock_api.get(regex_url, body=json.dumps(response), callback=callback)
         return url
 
+    @patch('web3.Web3')
+    @patch('web3.Web3.eth')
+    def test_approve_allowance_success(self, mock_eth, mock_web3):
+        # Set up mock web3
+        mock_web3.return_value = mock_web3
+        mock_web3.HTTPProvider.return_value = MagicMock()
+        mock_web3.to_checksum_address.side_effect = lambda x: x
+        mock_eth.get_transaction_count.return_value = 1
+        mock_eth.gas_price = 1000000000  # 1 gwei
+        mock_eth.wait_for_transaction_receipt.return_value = {"status": 1}
+
+        # Mock contract functions
+        mock_contract = MagicMock()
+        mock_contract.functions.approve.return_value.estimate_gas.return_value = 200000
+        mock_contract.functions.approve.return_value.build_transaction.return_value = {
+            "from": "0xmock",
+            "nonce": 1,
+            "gasPrice": 1000000000,
+            "gas": 200000,
+        }
+        mock_eth.contract.return_value = mock_contract
+        mock_eth.account.sign_transaction.return_value.rawTransaction = "0xmockrawtransaction"
+        mock_eth.send_raw_transaction.return_value = "0xmockhash"
+
+        txn_receipt = self.exchange.approve_allowance()
+
+        self.assertIsNotNone(txn_receipt)
+        self.assertEqual(txn_receipt, {"status": 1})
+
+    @patch('web3.Web3')
+    @patch('web3.Web3.eth')
+    def test_approve_allowance_failure(self, mock_eth, mock_web3):
+        # Set up mock web3
+        mock_web3.return_value = mock_web3
+        mock_web3.HTTPProvider.return_value = MagicMock()
+        mock_web3.to_checksum_address.side_effect = lambda x: x
+        mock_eth.get_transaction_count.return_value = 1
+        mock_eth.gas_price = 1000000000  # 1 gwei
+
+        # Mock contract functions
+        mock_contract = MagicMock()
+        mock_contract.functions.approve.return_value.estimate_gas.side_effect = Exception("Gas estimation failed")
+        mock_eth.contract.return_value = mock_contract
+
+        txn_receipt = self.exchange.approve_allowance()
+
+        self.assertIsNone(txn_receipt)
+        self.logger.error.assert_called_with("Error occurred while approving allowance: %s", "Gas estimation failed")
+
     def order_event_for_new_order_websocket_update(self, order: InFlightOrder):
         return {
             "action": "order_submitted",
@@ -576,7 +629,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
                 "quoteDecimals": 6,
                 "side": order.trade_type.name.lower(),
                 "status": "open",
-                "time": "2024-05-16T12:08:23.199339712Z",
+                "timestamp": 1499405658657,
                 "total": 300,
                 "volumePrecision": "1000000000000000000"
             }
@@ -603,7 +656,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
                 "quoteDecimals": 6,
                 "side": order.trade_type.name.lower(),
                 "status": "cancelled",
-                "time": "2024-05-16T12:08:23.199339712Z",
+                "timestamp": 1499405658657,
                 "total": 300,
                 "volumePrecision": "1000000000000000000"
             }
@@ -629,8 +682,8 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
                 "quoteCurrency": self.expected_fill_fee.flat_fees[0].token,
                 "quoteDecimals": 6,
                 "side": order.trade_type.name.lower(),
-                "status": "completed",
-                "time": "2024-05-16T12:08:23.199339712Z",
+                "status": "closed",
+                "timestamp": 1499405658657,
                 "total": 300,
                 "volumePrecision": "1000000000000000000"
             }
@@ -664,7 +717,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
 
         trade_fill = {
-            "orderId": order.exchange_order_id,
+            "order_id": order.exchange_order_id,
             "id": 28457,
             "symbol": self.exchange_symbol_for_tokens(self.base_asset, self.quote_asset),
             "marketId": "80002_0x6b94a36d6ff05886d44b3dafabdefe85f09563ba_0x7551122e441edbf3fffcbcf2f7fcc636b636482b",  # noqa: mock
@@ -672,14 +725,14 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
             "amount": 1,
             "state": "success",
             "txHash": "0xf962a6b0c436f37a0a3ff049b51507b4e3c25226be752cf3b9944ad27a99a2a5",  # noqa: mock
-            "time": "2024-04-26T17:43:36.364668Z",
-            "takerType": "buy",
+            "timestamp": 1499865549590,
+            "taker_type": "buy",
             "taker": "0x3da2b15eb80b1f7d499d18b6f0b671c838e64cb3",  # noqa: mock
             "maker": "0x3da2b15eb80b1f7d499d18b6f0b671c838e64cb3"  # noqa: mock
         },
 
         trade_fill_non_tracked_order = {
-            "orderId": str(order.exchange_order_id),
+            "order_id": str(order.exchange_order_id),
             "id": 30000,
             "symbol": self.exchange_symbol_for_tokens(self.base_asset, self.quote_asset),
             "marketId": "80002_0x6b94a36d6ff05886d44b3dafabdefe85f09563ba_0x7551122e441edbf3fffcbcf2f7fcc636b636482b",  # noqa: mock
@@ -687,8 +740,8 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
             "amount": 12.00000000,
             "state": "success",
             "txHash": "0xf962a6b0c436f37a0a3ff049b51507b4e3c25226be752cf3b9944ad27a99a2a5",  # noqa: mock
-            "time": "2024-04-26T17:43:36.364668Z",
-            "takerType": "buy",
+            "timestamp": 1499865549590,
+            "taker_type": "buy",
             "taker": "0x3da2b15eb80b1f7d499d18b6f0b671c838e64cb3",  # noqa: mock
             "maker": "0x3da2b15eb80b1f7d499d18b6f0b671c838e64cb3"  # noqa: mock
         },
@@ -719,7 +772,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
                          fill_event.trade_fee.flat_fees)
 
         fill_event: OrderFilledEvent = self.order_filled_logger.event_log[1]
-        self.assertEqual(datetime.strptime(trade_fill_non_tracked_order["time"], '%Y-%m-%dT%H:%M:%S.%fZ'), fill_event.timestamp)
+        self.assertEqual(trade_fill_non_tracked_order["timestamp"] * 1e-3, fill_event.timestamp)
         self.assertEqual("OID99", fill_event.order_id)
         self.assertEqual(self.trading_pair, fill_event.trading_pair)
         self.assertEqual(TradeType.BUY, fill_event.trade_type)
@@ -772,7 +825,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
 
         trade_fill_non_tracked_order = {
-            "orderId": 99999,
+            "order_id": 99999,
             "id": 30000,
             "symbol": self.exchange_symbol_for_tokens(self.base_asset, self.quote_asset),
             "marketId": "80002_0x6b94a36d6ff05886d44b3dafabdefe85f09563ba_0x7551122e441edbf3fffcbcf2f7fcc636b636482b",  # noqa: mock
@@ -780,8 +833,8 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
             "amount": "12.00000000",
             "state": "success",
             "txHash": "0xf962a6b0c436f37a0a3ff049b51507b4e3c25226be752cf3b9944ad27a99a2a5",  # noqa: mock
-            "time": "2024-04-26T17:43:36.364668Z",
-            "takerType": "buy",
+            "timestamp": 1499865549590,
+            "taker_type": "buy",
             "taker": "0x3da2b15eb80b1f7d499d18b6f0b671c838e64cb3",  # noqa: mock
             "maker": "0x3da2b15eb80b1f7d499d18b6f0b671c838e64cb3"  # noqa: mock
         }
@@ -790,7 +843,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
         mock_api.get(regex_url, body=json.dumps(mock_response))
 
         self.exchange.add_exchange_order_ids_from_market_recorder(
-            {str(trade_fill_non_tracked_order["orderId"]): "OID99"})
+            {str(trade_fill_non_tracked_order["order_id"]): "OID99"})
 
         self.async_run_with_timeout(self.exchange._update_order_fills_from_trades())
 
@@ -799,7 +852,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
 
         self.assertEqual(1, len(self.order_filled_logger.event_log))
         fill_event: OrderFilledEvent = self.order_filled_logger.event_log[0]
-        self.assertEqual(datetime.strptime(trade_fill_non_tracked_order["time"], '%Y-%m-%dT%H:%M:%S.%fZ'), fill_event.timestamp)
+        self.assertEqual(trade_fill_non_tracked_order["timestamp"] * 1e-3, fill_event.timestamp)
         self.assertEqual("OID99", fill_event.order_id)
         self.assertEqual(self.trading_pair, fill_event.trading_pair)
         self.assertEqual(TradeType.BUY, fill_event.trade_type)
@@ -856,7 +909,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
             "fee": 0,
             "status": "cancelled",
             "cancel_reason": "",
-            "time": "2024-04-30T07:02:36.300856Z"
+            "timestamp": 1499827319559
         }
         mock_response = order_status
         mock_api.get(regex_url, body=json.dumps(mock_response))
@@ -875,7 +928,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
             self.is_logged(
                 "INFO",
                 f"Order {order.client_order_id} has failed. Order Update: OrderUpdate(trading_pair='{self.trading_pair}',"
-                f" update_timestamp={tegro_utils.datetime_val_or_now(order_status['updateTime'])}, new_state={repr(OrderState.FAILED)}, "
+                f" update_timestamp={order_status['timestamp'] * 1e-3}, new_state={repr(OrderState.FAILED)}, "
                 f"client_order_id='{order.client_order_id}', exchange_order_id='{order.exchange_order_id}', "
                 "misc_updates=None)")
         )
@@ -911,7 +964,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
             "quoteDecimals": 6,
             "side": "buy",
             "status": "cancelled",
-            "time": "2024-05-16T10:57:42.684507Z",
+            "timestamp": 1499405658657,
             "total": 4,
             "volumePrecision": "0"
         }
@@ -1129,11 +1182,9 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
             ))
 
     def _order_cancelation_request_successful_mock_response(self, order: InFlightOrder) -> Any:
-        return [
-            {
-                "cancelled_order_ids": str(order.exchange_order_id),
-            }
-        ]
+        return {
+            "cancelled_order_ids": [str(order.exchange_order_id)],
+        }
 
     def _order_status_request_completely_filled_mock_response(self, order: InFlightOrder) -> Any:
         return {
@@ -1153,12 +1204,12 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
             "volume_precision": "3999900000000000000",
             "total": "13959.651",
             "fee": "0",
-            "status": "completed",
+            "status": "closed",
             "cancel": {
                 "reason": "",
                 "code": 0
             },
-            "timestamp": 1719964423
+            "timestamp": 1499827319559
         }
 
     def _order_status_request_canceled_mock_response(self, order: InFlightOrder) -> Any:
@@ -1184,7 +1235,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
                 "reason": "user_cancel",
                 "code": 611
             },
-            "timestamp": 1719964423
+            "timestamp": 1499827319559
         }
 
     def _order_status_request_open_mock_response(self, order: InFlightOrder) -> Any:
@@ -1210,7 +1261,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
                 "reason": "",
                 "code": 0
             },
-            "timestamp": 1720458258
+            "timestamp": 1499827319559
         }
 
     def _order_status_request_partially_filled_mock_response(self, order: InFlightOrder) -> Any:
@@ -1236,7 +1287,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
                 "reason": "",
                 "code": 0
             },
-            "timestamp": 1719964423
+            "timestamp": 1499827319559
         }
 
     def _order_fills_request_partial_fill_mock_response(self, order: InFlightOrder):
@@ -1250,7 +1301,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
                 "amount": str(self.expected_partial_fill_amount),
                 "state": "partial",
                 "tx_hash": "0x4e240028f16196f421ab266b7ea95acaee4b7fc648e97c19a0f93b3c8f0bb32d",  # noqa: mock
-                "timestamp": 1719485745,
+                "timestamp": 1499865549590,
                 "fee": str(self.expected_fill_fee.flat_fees[0].amount),
                 "taker_type": order.order_type.name.lower(),
                 "taker": "0x1870f03410fdb205076718337e9763a91f029280",  # noqa: mock
@@ -1269,7 +1320,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
                 "amount": str(order.amount),
                 "state": "success",
                 "tx_hash": "0x4e240028f16196f421ab266b7ea95acaee4b7fc648e97c19a0f93b3c8f0bb32d",  # noqa: mock
-                "timestamp": 1719485745,
+                "timestamp": 1499865549590,
                 "fee": str(self.expected_fill_fee.flat_fees[0].amount),
                 "taker_type": order.order_type.name.lower(),
                 "taker": "0x1870f03410fdb205076718337e9763a91f029280",  # noqa: mock

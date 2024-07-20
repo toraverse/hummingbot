@@ -1,4 +1,3 @@
-from decimal import Decimal
 from typing import Dict, Optional
 
 from hummingbot.core.data_type.common import TradeType
@@ -14,29 +13,23 @@ class TegroOrderBook(OrderBook):
         if metadata:
             msg.update(metadata)
 
+        def ensure_price_and_quantity(entry: Dict[str, any]):
+            price = entry.get('price', 0.0)
+            quantity = entry.get('quantity', 0)
+            return [price, quantity]
+
         trading_pair = msg.get("trading_pair", "")
         time = msg.get("timestamp", "")
-        bids = cls.parse_entries(msg.get("bids", []))
-        asks = cls.parse_entries(msg.get("asks", []))
+
+        bids = [ensure_price_and_quantity(entry) for entry in msg.get("bids", [])]
+        asks = [ensure_price_and_quantity(entry) for entry in msg.get("asks", [])]
 
         return OrderBookMessage(OrderBookMessageType.SNAPSHOT, {
             "trading_pair": trading_pair,
             "update_id": time,
-            "bids": bids,
-            "asks": asks,
+            "bids": bids if len(bids) > 0 else "",
+            "asks": asks if len(asks) > 0 else ""
         }, timestamp=timestamp)
-
-    @staticmethod
-    def parse_entries(entries: list) -> list:
-        parsed_entries = []
-        if entries is not None:
-            for entry in entries:
-                price = Decimal(entry.get('price', 0))
-                quantity = Decimal(entry.get('quantity', 0))
-                if price is not None and quantity is not None:
-                    parsed_entry = [float(price), float(quantity)]
-                    parsed_entries.append(parsed_entry)
-        return parsed_entries
 
     @classmethod
     def diff_message_from_exchange(cls,
@@ -52,11 +45,20 @@ class TegroOrderBook(OrderBook):
         """
         if metadata:
             msg.update(metadata)
+
+        def ensure_price_and_quantity(entry: Dict[str, any]):
+            price = entry.get('price', 0.0)
+            quantity = entry.get('quantity', 0)
+            return [price, quantity]
+        # Ensure 'price' and 'quantity' keys exist in each entry, defaulting to 0 if missing
+        bids = [ensure_price_and_quantity(entry) for entry in msg["data"].get("bids", [])]
+        asks = [ensure_price_and_quantity(entry) for entry in msg["data"].get("asks", [])]
+
         return OrderBookMessage(OrderBookMessageType.DIFF, {
             "trading_pair": msg["trading_pair"],
             "update_id": msg["data"]["timestamp"],
-            "bids": [[float(entry['price']), entry['quantity']] for entry in msg["data"]["bids"]],
-            "asks": [[float(entry['price']), entry['quantity']] for entry in msg["data"]["asks"]],
+            "bids": bids if len(bids) > 0 else "",
+            "asks": asks if len(asks) > 0 else ""
         }, timestamp=timestamp * 1e-3)
 
     @classmethod
@@ -72,7 +74,7 @@ class TegroOrderBook(OrderBook):
         ts = timestamp
         return OrderBookMessage(OrderBookMessageType.TRADE, {
             "trading_pair": msg["data"]["symbol"],
-            "trade_type": float(TradeType.SELL.value) if msg["data"]["takerType"] == "sell" else float(TradeType.BUY.value),
+            "trade_type": float(TradeType.BUY.value) if msg["data"]["is_buyer_maker"] else float(TradeType.SELL.value),
             "trade_id": msg["data"]["id"],
             "update_id": ts,
             "price": msg["data"]["price"],

@@ -39,6 +39,7 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
         self.mocking_assistant = NetworkMockingAssistant()
 
         client_config_map = ClientConfigAdapter(ClientConfigMap())
+        self.chain_id = "polygon"
         self.chain = "80002"
         self.connector = TegroExchange(
             client_config_map=client_config_map,
@@ -150,7 +151,7 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
             {
                 "id": "80002_0x6b94a36d6ff05886d44b3dafabdefe85f09563ba_0x7551122e441edbf3fffcbcf2f7fcc636b636482b",  # noqa: mock
                 "symbol": "WETH_USDT",
-                "chainId": 80002,
+                "chain_id": self.chain,
                 "state": "verified",
                 "base_contract_address": "0x6b94a36d6ff05886d44b3dafabdefe85f09563ba",  # noqa: mock
                 "base_symbol": "WETH",
@@ -174,7 +175,7 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
             {
                 "id": "80002_0xcabd9e0ea17583d57a972c00a1413295e7c69246_0x7551122e441edbf3fffcbcf2f7fcc636b636482b",  # noqa: mock
                 "symbol": "FREN_USDT",
-                "chainId": 80002,
+                "chain_id": self.chain,
                 "state": "verified",
                 "base_contract_address": "0xcabd9e0ea17583d57a972c00a1413295e7c69246",  # noqa: mock
                 "base_symbol": "FREN",
