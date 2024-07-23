@@ -31,6 +31,7 @@ class TegroAPIOrderBookDataSource(OrderBookTrackerDataSource):
                  domain: Optional[str] = CONSTANTS.DOMAIN):
         super().__init__(trading_pairs)
         self._connector = connector
+        self.trading_pairs = trading_pairs
         self._trade_messages_queue_key = CONSTANTS.TRADE_EVENT_TYPE
         self._diff_messages_queue_key = CONSTANTS.DIFF_EVENT_TYPE
         self._domain: Optional[str] = domain
@@ -68,7 +69,7 @@ class TegroAPIOrderBookDataSource(OrderBookTrackerDataSource):
 
         :return: the response from the exchange (JSON dictionary)
         """
-        data = await self._connector._initialize_verified_market()
+        data = await self.initialize_verified_market()
         params = {
             "chain_id": self.chain,
             "market_id": data["id"],
@@ -83,13 +84,47 @@ class TegroAPIOrderBookDataSource(OrderBookTrackerDataSource):
         )
         return data
 
+    async def initialize_verified_market(self):
+        data = await self.initialize_market_list()
+        id = []
+        for trading_pair in self._trading_pairs:
+            symbol = await self._connector.exchange_symbol_associated_to_pair(trading_pair=trading_pair)
+        for market in data:
+            if market["chainId"] == self.chain and market["symbol"] == symbol:
+                id.append(market)
+        rest_assistant = await self._api_factory.get_rest_assistant()
+        data = await rest_assistant.execute_request(
+            url = tegro_web_utils.public_rest_url(CONSTANTS.EXCHANGE_INFO_PATH_URL.format(
+                self.chain, id[0]["id"]), self._domain),
+            method=RESTMethod.GET,
+            is_auth_required = False,
+            throttler_limit_id = CONSTANTS.EXCHANGE_INFO_PATH_URL,
+        )
+        return data
+
+    async def initialize_market_list(self):
+        rest_assistant = await self._api_factory.get_rest_assistant()
+        resp = await rest_assistant.execute_request(
+            method=RESTMethod.GET,
+            params={
+                "page": 1,
+                "sort_order": "desc",
+                "page_size": 20,
+                "verified": "true"
+            },
+            url = tegro_web_utils.public_rest_url(CONSTANTS.MARKET_LIST_PATH_URL.format(self.chain), self._domain),
+            is_auth_required = False,
+            throttler_limit_id = CONSTANTS.MARKET_LIST_PATH_URL,
+        )
+        return resp
+
     async def _subscribe_channels(self, ws: WSAssistant):
         """
         Subscribes to the trade events and diff orders events through the provided websocket connection.
         :param ws: the websocket assistant used to connect to the exchange
         """
         try:
-            market_data = await self._fetch_market_data()
+            market_data = await self.initialize_market_list()
             param: str = self._process_market_data(market_data)
 
             payload = {
@@ -120,24 +155,6 @@ class TegroAPIOrderBookDataSource(OrderBookTrackerDataSource):
                 symbol = f"{self.chain}/{address}"
                 break
         return symbol
-
-    async def _fetch_market_data(self):
-        try:
-            data = await self._connector._api_request(
-                path_url = CONSTANTS.MARKET_LIST_PATH_URL.format(self.chain),
-                method=RESTMethod.GET,
-                params={
-                    "page": 1, "sort_order": "desc", "sort_by": "volume", "page_size": 20, "verified": "true"
-                },
-                limit_id=CONSTANTS.MARKET_LIST_PATH_URL,
-                is_auth_required=False
-            )
-            return data
-        except Exception:
-            self.logger().error(
-                "Unexpected error occurred fetching market data...", exc_info=True
-            )
-            raise
 
     async def _connected_websocket_assistant(self) -> WSAssistant:
         ws: WSAssistant = await self._api_factory.get_ws_assistant()

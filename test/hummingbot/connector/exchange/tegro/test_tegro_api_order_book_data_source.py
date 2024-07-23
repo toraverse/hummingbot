@@ -89,9 +89,59 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
         }
         return resp
 
+    def initialize_verified_market_response(self):
+        return {
+            "id": "80002_0x6b94a36d6ff05886d44b3dafabdefe85f09563ba_0x7551122e441edbf3fffcbcf2f7fcc636b636482b",  # noqa: mock
+            "base_contract_address": "0x6b94a36d6ff05886d44b3dafabdefe85f09563ba",  # noqa: mock
+            "quote_contract_address": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",  # noqa: mock
+            "chain_id": self.chain,
+            "symbol": self.ex_trading_pair,
+            "state": "verified",
+            "base_symbol": self.base_asset,
+            "quote_symbol": self.quote_asset,
+            "base_decimal": 18,
+            "quote_decimal": 6,
+            "logo": "",
+            "ticker": {
+                "base_volume": 265306,
+                "quote_volume": 1423455.3812000754,
+                "price": 0.9541,
+                "price_change_24h": -85.61,
+                "price_high_24h": 10,
+                "price_low_24h": 0.2806,
+                "ask_low": 0.2806,
+                "bid_high": 10
+            }
+        }
+
+    def initialize_market_list_response(self):
+        return {
+            "id": "80002_0x6b94a36d6ff05886d44b3dafabdefe85f09563ba_0x7551122e441edbf3fffcbcf2f7fcc636b636482b",  # noqa: mock
+            "base_contract_address": "0x6b94a36d6ff05886d44b3dafabdefe85f09563ba",  # noqa: mock
+            "quote_contract_address": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",  # noqa: mock
+            "chain_id": self.chain,
+            "symbol": self.ex_trading_pair,
+            "state": "verified",
+            "base_symbol": self.base_asset,
+            "quote_symbol": self.quote_asset,
+            "base_decimal": 18,
+            "quote_decimal": 6,
+            "logo": "",
+            "ticker": {
+                "base_volume": 265306,
+                "quote_volume": 1423455.3812000754,
+                "price": 0.9541,
+                "price_change_24h": -85.61,
+                "price_high_24h": 10,
+                "price_low_24h": 0.2806,
+                "ask_low": 0.2806,
+                "bid_high": 10
+            }
+        }
+
     def _trade_update_event(self):
         resp = {
-            "action": "user_trade_updated",
+            "action": "trade_updated",
             "data": {
                 "amount": 1,
                 "id": "68a22415-3f6b-4d27-8996-1cbf71d89e5f",
@@ -101,7 +151,7 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
                 "state": "success",
                 "symbol": self.ex_trading_pair,
                 "taker": "0xf3ef968dd1687df8768a960e9d473a3361146a73",  # noqa: mock
-                "takerType": "buy",
+                "is_buyer_maker": True,
                 "time": '2024-02-11T22:31:50.25114Z',
                 "txHash": "0x2f0d41ced1c7d21fe114235dfe363722f5f7026c21441f181ea39768a151c205",  # noqa: mock
             }}
@@ -199,6 +249,27 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
         ]
 
     @aioresponses()
+    def test_initialize_verified_market(
+            self,
+            mock_api) -> str:
+        url = web_utils.private_rest_url(CONSTANTS.EXCHANGE_INFO_PATH_URL.format(
+            self.chain, "80002_0x6b94a36d6ff05886d44b3dafabdefe85f09563ba_0x7551122e441edbf3fffcbcf2f7fcc636b636482b"),)
+        regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
+        response = self.initialize_verified_market_response()
+        mock_api.get(regex_url, body=json.dumps(response))
+        return response
+
+    @aioresponses()
+    def test_initialize_market_list(
+            self,
+            mock_api) -> str:
+        url = web_utils.private_rest_url(CONSTANTS.MARKET_LIST_PATH_URL)
+        regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
+        response = self.initialize_market_list_response()
+        mock_api.get(regex_url, body=json.dumps(response))
+        return response
+
+    @aioresponses()
     def test_fetch_market_data(
             self,
             mock_api) -> str:
@@ -208,8 +279,19 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
         mock_api.get(regex_url, body=json.dumps(response))
         return response
 
+    @patch("hummingbot.connector.exchange.tegro.tegro_api_order_book_data_source.TegroAPIOrderBookDataSource.initialize_market_list", new_callable=AsyncMock)
+    @patch("hummingbot.connector.exchange.tegro.tegro_api_order_book_data_source.TegroAPIOrderBookDataSource.initialize_verified_market", new_callable=AsyncMock)
     @aioresponses()
-    def test_get_new_order_book_successful(self, mock_api):
+    def test_get_new_order_book_successful(self, mock_list: AsyncMock, mock_verified: AsyncMock, mock_api):
+        url = web_utils.public_rest_url(path_url=CONSTANTS.MARKET_LIST_PATH_URL, domain=self.domain)
+        regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
+        mock_list.return_value = self.initialize_market_list_response()
+
+        # Mocking the exchange info request
+        url = web_utils.public_rest_url(path_url=CONSTANTS.EXCHANGE_INFO_PATH_URL, domain=self.domain)
+        regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
+        mock_verified.return_value = self.initialize_verified_market_response()
+
         url = web_utils.public_rest_url(path_url=CONSTANTS.SNAPSHOT_PATH_URL, domain=self.domain)
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
 
@@ -235,8 +317,19 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
         self.assertEqual(50000, asks[0].amount)
         self.assertEqual(expected_update_id, asks[0].update_id)
 
+    @patch("hummingbot.connector.exchange.tegro.tegro_api_order_book_data_source.TegroAPIOrderBookDataSource.initialize_market_list", new_callable=AsyncMock)
+    @patch("hummingbot.connector.exchange.tegro.tegro_api_order_book_data_source.TegroAPIOrderBookDataSource.initialize_verified_market", new_callable=AsyncMock)
     @aioresponses()
-    def test_get_new_order_book_raises_exception(self, mock_api):
+    def test_get_new_order_book_raises_exception(self, mock_list: AsyncMock, mock_verified: AsyncMock, mock_api):
+        url = web_utils.public_rest_url(path_url=CONSTANTS.MARKET_LIST_PATH_URL, domain=self.domain)
+        regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
+        mock_list.return_value = self.initialize_market_list_response()
+
+        # Mocking the exchange info request
+        url = web_utils.public_rest_url(path_url=CONSTANTS.EXCHANGE_INFO_PATH_URL, domain=self.domain)
+        regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
+        mock_verified.return_value = self.initialize_verified_market_response()
+
         url = web_utils.public_rest_url(path_url=CONSTANTS.SNAPSHOT_PATH_URL, domain=self.domain)
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
 
@@ -247,7 +340,11 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
             )
 
     @patch("aiohttp.ClientSession.ws_connect", new_callable=AsyncMock)
-    def test_listen_for_subscriptions_subscribes_to_trades_and_order_diffs(self, ws_connect_mock):
+    @patch("hummingbot.connector.exchange.tegro.tegro_api_order_book_data_source.TegroAPIOrderBookDataSource._process_market_data")
+    @patch("hummingbot.connector.exchange.tegro.tegro_api_order_book_data_source.TegroAPIOrderBookDataSource.initialize_market_list", new_callable=AsyncMock)
+    def test_listen_for_subscriptions_subscribes_to_trades_and_order_diffs(self, mock_list: AsyncMock, mock_symbol, ws_connect_mock):
+        mock_list.return_value = self.initialize_market_list_response()
+        mock_symbol.return_value = "80002/0x6b94a36d6ff05886d44b3dafabdefe85f09563ba"
         ws_connect_mock.return_value = self.mocking_assistant.create_websocket_mock()
 
         result_subscribe = {
@@ -270,7 +367,7 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
         print(sent_subscription_messages)
         expected_trade_subscription = {
             "action": "subscribe",
-            "channelId": f"{CONSTANTS.CHAIN_ID}/0x6b94a36d6ff05886d44b3dafabdefe85f09563ba"  # noqa: mock
+            "channelId": "80002/0x6b94a36d6ff05886d44b3dafabdefe85f09563ba"  # noqa: mock
         }
         self.assertEqual(expected_trade_subscription, sent_subscription_messages[0])
 
@@ -303,7 +400,13 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
                 "ERROR",
                 "Unexpected error occurred when listening to order book streams. Retrying in 5 seconds..."))
 
-    def test_subscribe_channels_raises_cancel_exception(self):
+    @patch("hummingbot.connector.exchange.tegro.tegro_api_order_book_data_source.TegroAPIOrderBookDataSource._process_market_data")
+    @patch("hummingbot.connector.exchange.tegro.tegro_api_order_book_data_source.TegroAPIOrderBookDataSource.initialize_market_list", new_callable=AsyncMock)
+    def test_subscribe_channels_raises_cancel_exception(self, mock_api: AsyncMock, mock_symbol):
+        mock_api.return_value = self.initialize_market_list_response()
+
+        mock_symbol.return_value = "80002/0x6b94a36d6ff05886d44b3dafabdefe85f09563ba"
+
         mock_ws = MagicMock()
         mock_ws.send.side_effect = asyncio.CancelledError
 
@@ -371,7 +474,6 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
             self.data_source.listen_for_trades(self.ev_loop, msg_queue))
 
         msg: OrderBookMessage = self.async_run_with_timeout(msg_queue.get())
-        print(msg.trade_id)
 
         self.assertEqual("68a22415-3f6b-4d27-8996-1cbf71d89e5f", msg.trade_id)
 
@@ -427,8 +529,19 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
 
         self.assertEqual(diff_event["data"]["timestamp"], msg.update_id)
 
+    @patch("hummingbot.connector.exchange.tegro.tegro_api_order_book_data_source.TegroAPIOrderBookDataSource.initialize_market_list", new_callable=AsyncMock)
+    @patch("hummingbot.connector.exchange.tegro.tegro_api_order_book_data_source.TegroAPIOrderBookDataSource.initialize_verified_market", new_callable=AsyncMock)
     @aioresponses()
-    def test_listen_for_order_book_snapshots_cancelled_when_fetching_snapshot(self, mock_api):
+    def test_listen_for_order_book_snapshots_cancelled_when_fetching_snapshot(self, mock_list: AsyncMock, mock_verified: AsyncMock, mock_api):
+        url = web_utils.public_rest_url(path_url=CONSTANTS.MARKET_LIST_PATH_URL, domain=self.domain)
+        regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
+        mock_list.return_value = self.initialize_market_list_response()
+
+        # Mocking the exchange info request
+        url = web_utils.public_rest_url(path_url=CONSTANTS.EXCHANGE_INFO_PATH_URL, domain=self.domain)
+        regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
+        mock_verified.return_value = self.initialize_verified_market_response()
+
         url = web_utils.public_rest_url(path_url=CONSTANTS.SNAPSHOT_PATH_URL, domain=self.domain)
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
 
@@ -443,6 +556,7 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
     @patch("hummingbot.connector.exchange.tegro.tegro_api_order_book_data_source"
            ".TegroAPIOrderBookDataSource._sleep")
     def test_listen_for_order_book_snapshots_log_exception(self, mock_api, sleep_mock):
+        # Mocking the market list request
         msg_queue: asyncio.Queue = asyncio.Queue()
         sleep_mock.side_effect = lambda _: self._create_exception_and_unlock_test_with_event(asyncio.CancelledError())
 
@@ -459,8 +573,23 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
         self.assertTrue(
             self._is_logged("ERROR", f"Unexpected error fetching order book snapshot for {self.trading_pair}."))
 
+    @patch("hummingbot.connector.exchange.tegro.tegro_api_order_book_data_source.TegroAPIOrderBookDataSource.initialize_market_list", new_callable=AsyncMock)
+    @patch("hummingbot.connector.exchange.tegro.tegro_api_order_book_data_source.TegroAPIOrderBookDataSource.initialize_verified_market", new_callable=AsyncMock)
     @aioresponses()
-    def test_listen_for_order_book_snapshots_successful(self, mock_api, ):
+    def test_listen_for_order_book_snapshots_successful(self, mock_list: AsyncMock, mock_verified: AsyncMock, mock_api):
+        # Mock the async methods
+
+        # Mocking the market list request
+        url = web_utils.public_rest_url(path_url=CONSTANTS.MARKET_LIST_PATH_URL, domain=self.domain)
+        regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
+        mock_list.return_value = self.initialize_market_list_response()
+
+        # Mocking the exchange info request
+        url = web_utils.public_rest_url(path_url=CONSTANTS.EXCHANGE_INFO_PATH_URL, domain=self.domain)
+        regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
+        mock_verified.return_value = self.initialize_verified_market_response()
+
+        # Mocking the order book snapshot request
         msg_queue: asyncio.Queue = asyncio.Queue()
         url = web_utils.public_rest_url(path_url=CONSTANTS.SNAPSHOT_PATH_URL, domain=self.domain)
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
