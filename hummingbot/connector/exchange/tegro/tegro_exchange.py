@@ -260,15 +260,7 @@ class TegroExchange(ExchangePyBase):
         transaction_data = await self._generate_typed_data(amount, order_type, price, trade_type, trading_pair)
         s = await self.exchange_symbol_associated_to_pair(trading_pair=trading_pair)
         symbol: str = s.replace('-', '_')
-        domain_data = transaction_data["sign_data"]["domain"]
-        message_data = transaction_data["sign_data"]["message"]
-        message_types = {"Order": transaction_data["sign_data"]["types"]["Order"]}
-
-        # encode and sign
-        structured_data = encode_typed_data(domain_data, message_types, message_data)
-        signed = self.wallet.sign_message(structured_data)
-        signature = signed.signature.hex()
-
+        signature = self.sign_inner(transaction_data)
         api_params = {
             "chain_id": self.chain,
             "base_asset": transaction_data["limit_order"]["base_asset"],
@@ -361,20 +353,31 @@ class TegroExchange(ExchangePyBase):
                 raise
 
     def sign_inner(self, data):
-        # datas to sign
-        domain_data = data["sign_data"]["domain"]
-        message_data = data["sign_data"]["message"]
-        message_types = {"CancelOrder": data["sign_data"]["types"]["CancelOrder"]}
+        signature = None
+        if "Order" in data["sign_data"]["types"]:
+            domain_data = data["sign_data"]["domain"]
+            message_data = data["sign_data"]["message"]
+            message_types = {"Order": data["sign_data"]["types"]["Order"]}
 
-        # encode and sign
-        structured_data = encode_typed_data(domain_data, message_types, message_data)
-        signed = eth_account.Account.sign_message(structured_data)
-        signature = signed.signature.hex()
+            # encode and sign
+            structured_data = encode_typed_data(domain_data, message_types, message_data)
+            signed = self.wallet.sign_message(structured_data)
+            signature = signed.signature.hex()
+        else:
+            # datas to sign
+            domain_data = data["sign_data"]["domain"]
+            message_data = data["sign_data"]["message"]
+            message_types = {"CancelOrder": data["sign_data"]["types"]["CancelOrder"]}
+
+            # encode and sign
+            structured_data = encode_typed_data(domain_data, message_types, message_data)
+            signed = eth_account.Account.from_key(self.secret_key).sign_message(structured_data)
+            signature = signed.signature.hex()
         return signature
 
     async def _place_cancel(self, order_id: str, tracked_order: InFlightOrder):
         ids = []
-        ex_oid = await tracked_order.get_exchange_order_id()
+        ex_oid = (await tracked_order.get_exchange_order_id()).split("+")[0]
         ids.append(ex_oid)
         signature = await self._generate_cancel_order_typed_data(order_id, ids)
         if signature is not None:
@@ -383,7 +386,6 @@ class TegroExchange(ExchangePyBase):
                 "order_ids": ids,
                 "Signature": signature,
             }
-            print(params)
             cancel_result = await self._api_request(
                 path_url=CONSTANTS.CANCEL_ORDER_URL,
                 method=RESTMethod.POST,
@@ -573,7 +575,7 @@ class TegroExchange(ExchangePyBase):
         return trade_updates
 
     async def _request_order_status(self, tracked_order: InFlightOrder) -> OrderUpdate:
-        o_id, _ = (await tracked_order.get_exchange_order_id()).split("+")
+        o_id = (await tracked_order.get_exchange_order_id()).split("+")[0]
         updated_order_data = await self._api_get(
             path_url=CONSTANTS.TEGRO_USER_ORDER_PATH_URL.format(self.api_key),
             params = {
