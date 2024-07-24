@@ -422,7 +422,7 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
             self.listening_task = self.ev_loop.create_task(self.data_source._subscribe_channels(mock_ws))
             self.async_run_with_timeout(self.listening_task)
 
-        self.assertFalse(
+        self.assertTrue(
             self._is_logged("ERROR", "Unexpected error occurred subscribing to order book trading and delta streams...")
         )
 
