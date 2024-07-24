@@ -428,7 +428,7 @@ class TegroExchange(ExchangePyBase):
             if tegro_utils.is_exchange_information_valid(exchange_info=rule):
                 try:
                     trading_pair = await self.trading_pair_associated_to_exchange_symbol(symbol=rule.get("symbol"))
-                    min_order_size = Decimal(0.0001)
+                    min_order_size = Decimal(0.01)
                     min_price_inc = Decimal(f"1e-{rule['quote_precision']}")
                     step_size = Decimal(f'1e-{rule["base_precision"]}')
                     retval.append(
@@ -625,7 +625,7 @@ class TegroExchange(ExchangePyBase):
 
     def _initialize_trading_pair_symbols_from_exchange_info(self, exchange_info: list[Dict[str, Any]]):
         mapping = bidict()
-        for symbol_data in exchange_info[0]:
+        for symbol_data in exchange_info:
             if tegro_utils.is_exchange_information_valid(exchange_info=symbol_data):
                 try:
                     base, quote = symbol_data['symbol'].split('_')
@@ -815,7 +815,7 @@ class TegroExchange(ExchangePyBase):
             is_auth_required = False,
             limit_id = CONSTANTS.EXCHANGE_INFO_PATH_LIST_URL
         ),
-        return resp
+        return resp[0]
 
     async def tokens_info(self):
         account_info = await self._api_request(
