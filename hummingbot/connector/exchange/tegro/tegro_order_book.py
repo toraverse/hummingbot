@@ -21,14 +21,21 @@ class TegroOrderBook(OrderBook):
         trading_pair = msg.get("trading_pair", "")
         time = msg.get("timestamp", "")
 
-        bids = [ensure_price_and_quantity(entry) for entry in msg.get("bids", [])]
-        asks = [ensure_price_and_quantity(entry) for entry in msg.get("asks", [])]
+        bid_res = msg.get("bids", [])
+        ask_res = msg.get("asks", [])
+        bids = []
+        asks = []
+
+        if len(ask_res) > 0:
+            asks = [ensure_price_and_quantity(entry) for entry in msg.get("asks", [])]
+        if len(bid_res) > 0:
+            bids = [ensure_price_and_quantity(entry) for entry in msg.get("bids", [])]
 
         return OrderBookMessage(OrderBookMessageType.SNAPSHOT, {
             "trading_pair": trading_pair,
             "update_id": time,
-            "bids": bids if len(bids) > 0 else "",
-            "asks": asks if len(asks) > 0 else ""
+            "bids": bids,
+            "asks": asks
         }, timestamp=timestamp)
 
     @classmethod
@@ -51,14 +58,21 @@ class TegroOrderBook(OrderBook):
             quantity = entry.get('quantity', 0)
             return [price, quantity]
         # Ensure 'price' and 'quantity' keys exist in each entry, defaulting to 0 if missing
-        bids = [ensure_price_and_quantity(entry) for entry in msg["data"].get("bids", [])]
-        asks = [ensure_price_and_quantity(entry) for entry in msg["data"].get("asks", [])]
+        bid_res = msg["data"].get("bids", [])
+        ask_res = msg["data"].get("asks", [])
+        bids = []
+        asks = []
+
+        if len(ask_res) > 0:
+            asks = [ensure_price_and_quantity(entry) for entry in msg["data"].get("asks", [])]
+        if len(bid_res) > 0:
+            bids = [ensure_price_and_quantity(entry) for entry in msg["data"].get("bids", [])]
 
         return OrderBookMessage(OrderBookMessageType.DIFF, {
             "trading_pair": msg["trading_pair"],
             "update_id": msg["data"]["timestamp"],
-            "bids": bids if len(bids) > 0 else "",
-            "asks": asks if len(asks) > 0 else ""
+            "bids": bids,
+            "asks": asks
         }, timestamp=timestamp * 1e-3)
 
     @classmethod
