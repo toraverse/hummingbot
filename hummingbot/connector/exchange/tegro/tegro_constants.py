@@ -8,8 +8,8 @@ EXCHANGE_NAME = "tegro"
 DEFAULT_DOMAIN = "tegro"
 
 DOMAIN = EXCHANGE_NAME
-HBOT_ORDER_ID_PREFIX = "HB"
-MAX_ORDER_ID_LEN = 10
+HBOT_ORDER_ID_PREFIX = "TEGRO-"
+MAX_ORDER_ID_LEN = 32
 
 TEGRO_BASE_URL = "https://api.tegro.com/api/"
 TESTNET_BASE_URL = "https://api.testnet.tegro.com/api/"

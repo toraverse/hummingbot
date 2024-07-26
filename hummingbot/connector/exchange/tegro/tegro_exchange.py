@@ -424,20 +424,19 @@ class TegroExchange(ExchangePyBase):
             }
         """
         retval = []
-        for rule in exchange_info:
-            if tegro_utils.is_exchange_information_valid(exchange_info=rule):
-                try:
-                    trading_pair = await self.trading_pair_associated_to_exchange_symbol(symbol=rule.get("symbol"))
-                    min_order_size = Decimal(0.01)
-                    min_price_inc = Decimal(f"1e-{rule['quote_precision']}")
-                    step_size = Decimal(f'1e-{rule["base_precision"]}')
-                    retval.append(
-                        TradingRule(trading_pair,
-                                    min_order_size=min_order_size,
-                                    min_price_increment=Decimal(min_price_inc),
-                                    min_base_amount_increment=Decimal(step_size)))
-                except Exception:
-                    self.logger().exception(f"Error parsing the trading pair rule {rule}. Skipping.")
+        for rule in filter(tegro_utils.is_exchange_information_valid, exchange_info):
+            try:
+                trading_pair = await self.trading_pair_associated_to_exchange_symbol(symbol=rule.get("symbol"))
+                min_order_size = Decimal(0.01)
+                min_price_inc = Decimal(f"1e-{rule['quote_precision']}")
+                step_size = Decimal(f'1e-{rule["base_precision"]}')
+                retval.append(
+                    TradingRule(trading_pair,
+                                min_order_size=min_order_size,
+                                min_price_increment=Decimal(min_price_inc),
+                                min_base_amount_increment=Decimal(step_size)))
+            except Exception:
+                self.logger().exception(f"Error parsing the trading pair rule {rule}. Skipping.")
         return retval
 
     async def _update_trading_fees(self):
@@ -478,14 +477,13 @@ class TegroExchange(ExchangePyBase):
             self,
             order_fill: Dict[str, Any],
             order: InFlightOrder):
-        base_currency = order_fill["symbol"].split('_')[0]
         fee = TradeFeeBase.new_spot_fee(
             fee_schema=self.trade_fee_schema(),
             trade_type=order.trade_type,
-            percent_token=base_currency,
+            percent_token=order_fill["symbol"].split('_')[0],
             flat_fees=[TokenAmount(
                 amount=Decimal(0),
-                token=base_currency,
+                token=order_fill["symbol"].split('_')[0],
             )]
         )
 
@@ -786,7 +784,7 @@ class TegroExchange(ExchangePyBase):
         return status
 
     async def _make_trading_rules_request(self) -> Any:
-        data = await self._api_request(
+        data: list[dict[str, Any]] = await self._api_request(
             path_url = self.trading_pairs_request_path.format(self.chain),
             method=RESTMethod.GET,
             params={
@@ -802,7 +800,7 @@ class TegroExchange(ExchangePyBase):
         return data
 
     async def _make_trading_pairs_request(self) -> Any:
-        resp: list[Dict[str, any]] = await self._api_request(
+        resp = await self._api_request(
             path_url = self.trading_pairs_request_path.format(self.chain),
             method=RESTMethod.GET,
             params={

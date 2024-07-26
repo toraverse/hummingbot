@@ -25,10 +25,9 @@ def is_exchange_information_valid(exchange_info: Dict[str, Any]) -> bool:
     :param exchange_info: the exchange information for a trading pair
     :return: True if the trading pair is enabled, False otherwise
     """
-    if isinstance(exchange_info, dict):
-        symbol: str = exchange_info.get("symbol", "")
-        state: str = exchange_info.get("state", "")
-        return True if state == "verified" and symbol.count("_") == 1 else False
+    symbol: str = exchange_info.get("symbol", "")
+    state: str = exchange_info.get("state", "")
+    return True if state == "verified" and symbol.count("_") == 1 else False
 
 
 def get_ms_timestamp() -> int:
