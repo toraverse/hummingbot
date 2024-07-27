@@ -525,17 +525,6 @@ class TegroExchange(ExchangePyBase):
         order_update = self._create_order_update_with_order_status_data(order_status=raw_msg, order=tracked_order)
         self._order_tracker.process_order_update(order_update=order_update)
 
-    async def _users_orders(self):
-        await self.initialize_verified_market()
-        user_orders = await self._api_get(
-            path_url=CONSTANTS.ORDER_LIST.format(self.api_key),
-            params={"chain_id": self.chain,
-                    "page_size": 100},
-            limit_id=CONSTANTS.ORDER_LIST,
-            is_auth_required=False,
-        )
-        return user_orders
-
     async def _all_trade_updates_for_order(self, order: InFlightOrder) -> List[TradeUpdate]:
         trade_updates = []
 
