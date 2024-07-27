@@ -63,10 +63,6 @@ class TegroExchange(ExchangePyBase):
         self.real_time_balance_update = False
 
     @staticmethod
-    def tegro_order_type(order_type: OrderType) -> str:
-        return order_type.name.upper()
-
-    @staticmethod
     def to_hb_order_type(tegro_type: str) -> OrderType:
         return OrderType[tegro_type]
 
@@ -109,15 +105,6 @@ class TegroExchange(ExchangePyBase):
         elif "testnet" in self._domain:
             chain = CONSTANTS.TESTNET_CHAIN_IDS[self.chain_id]
         return chain
-
-    @property
-    def rpc_node_url(self):
-        url = CONSTANTS.Node_URLS[self._domain]
-        return url
-
-    @property
-    def web_provider(self):
-        return Web3(Web3.HTTPProvider(self.rpc_node_url))
 
     @property
     def client_order_id_prefix(self):
@@ -348,7 +335,7 @@ class TegroExchange(ExchangePyBase):
             if is_not_active:
                 self.logger().debug(f"The order {order_id} does not exist on tegro."
                                     f"No cancelation needed.")
-                await self._order_tracker.process_order_not_found(order_id)
+                return "Order not found"
             else:
                 raise
 
@@ -380,7 +367,7 @@ class TegroExchange(ExchangePyBase):
         ex_oid = (await tracked_order.get_exchange_order_id()).split("+")[0]
         ids.append(ex_oid)
         signature = await self._generate_cancel_order_typed_data(order_id, ids)
-        if signature is not None:
+        if signature is not None and signature != "Order not found":
             params = {
                 "user_address": self.api_key,
                 "order_ids": ids,
@@ -394,6 +381,8 @@ class TegroExchange(ExchangePyBase):
                 limit_id=CONSTANTS.CANCEL_ORDER_URL)
             result = cancel_result["cancelled_order_ids"][0]
             return True if result == ids[0] else False
+        elif signature == "Order not found":
+            await self._order_tracker.process_order_not_found(order_id)
 
     async def _format_trading_rules(self, exchange_info: List[Dict[str, Any]]) -> List[TradingRule]:
         """
@@ -473,34 +462,6 @@ class TegroExchange(ExchangePyBase):
                     "Unexpected error in user stream listener loop.", exc_info=True)
                 await self._sleep(5.0)
 
-    def _create_trade_update_with_order_fill_data(
-            self,
-            order_fill: Dict[str, Any],
-            order: InFlightOrder):
-        fee = TradeFeeBase.new_spot_fee(
-            fee_schema=self.trade_fee_schema(),
-            trade_type=order.trade_type,
-            percent_token=order_fill["symbol"].split('_')[0],
-            flat_fees=[TokenAmount(
-                amount=Decimal(0),
-                token=order_fill["symbol"].split('_')[0],
-            )]
-        )
-
-        trade_update = TradeUpdate(
-            trade_id=str(order_fill["id"]),
-            client_order_id=order.client_order_id,
-            exchange_order_id=order.exchange_order_id,
-            trading_pair=order.trading_pair,
-            fee=fee,
-            fill_base_amount=Decimal(order_fill["amount"]),
-            fill_quote_amount=Decimal(order_fill["amount"]) * Decimal(order_fill["price"]),
-            fill_price=Decimal(order_fill["price"]),
-            fill_timestamp=order_fill['timestamp'] * 1e-3,
-
-        )
-        return trade_update
-
     def _create_order_update_with_order_status_data(self, order_status: Dict[str, Any], order: InFlightOrder):
         order_update = OrderUpdate(
             trading_pair=order.trading_pair,
@@ -571,15 +532,12 @@ class TegroExchange(ExchangePyBase):
             },
             limit_id=CONSTANTS.TEGRO_USER_ORDER_PATH_URL,
             is_auth_required=False)
-
-        new_state = CONSTANTS.ORDER_STATE[updated_order_data[0]["status"]]
-
         order_update = OrderUpdate(
             client_order_id=tracked_order.client_order_id,
             exchange_order_id=tracked_order.exchange_order_id,
             trading_pair=tracked_order.trading_pair,
             update_timestamp=updated_order_data[0]["timestamp"] * 1e-3,
-            new_state=new_state,
+            new_state=CONSTANTS.ORDER_STATE[updated_order_data[0]["status"]],
         )
 
         return order_update
@@ -588,21 +546,18 @@ class TegroExchange(ExchangePyBase):
         local_asset_names = set(self._account_balances.keys())
         remote_asset_names = set()
 
-        account_info = await self._api_request(
+        balances = await self._api_request(
             method=RESTMethod.GET,
             path_url=CONSTANTS.ACCOUNTS_PATH_URL.format(self.chain, self.api_key),
             limit_id=CONSTANTS.ACCOUNTS_PATH_URL,
             is_auth_required=False)
 
-        balances = account_info
         for balance_entry in balances:
             asset_name = balance_entry["symbol"]
             bal = float(str(balance_entry["balance"]))
             balance = Decimal(bal)
-            free_balance = balance
-            total_balance = balance
-            self._account_available_balances[asset_name] = free_balance
-            self._account_balances[asset_name] = total_balance
+            self._account_available_balances[asset_name] = balance
+            self._account_balances[asset_name] = balance
             remote_asset_names.add(asset_name)
 
         asset_names_to_remove = local_asset_names.difference(remote_asset_names)
@@ -616,10 +571,7 @@ class TegroExchange(ExchangePyBase):
             if tegro_utils.is_exchange_information_valid(exchange_info=symbol_data):
                 try:
                     base, quote = symbol_data['symbol'].split('_')
-                    mapping[symbol_data["symbol"]] = combine_to_hb_trading_pair(
-                        base = base,
-                        quote = quote
-                    )
+                    mapping[symbol_data["symbol"]] = combine_to_hb_trading_pair(base=base, quote=quote)
                 except Exception as exception:
                     self.logger().error(f"There was an error parsing a trading pair information ({exception})")
         self._set_trading_pair_symbol_map(mapping)
@@ -649,7 +601,7 @@ class TegroExchange(ExchangePyBase):
             token_list.append(quote)
 
         # Setting up Web3
-        w3 = Web3(Web3.HTTPProvider(self.rpc_node_url))
+        w3 = Web3(Web3.HTTPProvider(CONSTANTS.Node_URLS[self._domain]))
         w3.middleware_onion.inject(geth_poa_middleware, layer=0)
         approve_abi = CONSTANTS.ABI["approve"]
 
@@ -663,14 +615,9 @@ class TegroExchange(ExchangePyBase):
 
         # Organizing token data
         for t in tokens:
-            data[t["symbol"]] = {
-                "type": t["type"],
-                "address": t["address"],
-                "decimal": t["decimal"]
-            }
-
+            data[t["symbol"]] = {"address": t["address"]}
         # Loop through each token and approve allowance
-        for token in token_list:
+        for token in set(token_list):
             con_addr = Web3.to_checksum_address(data[token]["address"])
             addr = Web3.to_checksum_address(self.api_key)
             contract = w3.eth.contract(con_addr, abi=approve_abi)
@@ -696,10 +643,7 @@ class TegroExchange(ExchangePyBase):
                 approval_contract = contract.functions.approve(exchange_con_addr, MAX_UINT256).build_transaction(tx_params)
                 signed_tx = w3.eth.account.sign_transaction(approval_contract, self.secret_key)
                 txn_hash = w3.eth.send_raw_transaction(signed_tx.rawTransaction)
-                txn_receipt = w3.eth.wait_for_transaction_receipt(txn_hash)
-
-                # Return the transaction receipt
-                return txn_receipt
+                return w3.eth.wait_for_transaction_receipt(txn_hash)
 
             except Exception as e:
                 # Log the error and return None
@@ -812,20 +756,12 @@ class TegroExchange(ExchangePyBase):
             is_auth_required=False)
 
         data = []
-
         for dats in (account_info):
-            symbol = dats["symbol"]
-            address = dats["address"]
-            type = dats["type"]
-            balance = dats["balance"]
-            decimal = dats["decimal"]
             token_data = {
-                "symbol": symbol,
-                "address": address,
-                "type": type,
-                "balance": balance,
-                "decimal": decimal
+                "symbol": dats["symbol"],
+                "address": dats["address"],
+                "type": dats["type"],
+                "decimal": dats["decimal"],
             }
             data.append(token_data)
-
         return data
