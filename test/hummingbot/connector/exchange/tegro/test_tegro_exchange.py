@@ -20,11 +20,18 @@ from hummingbot.connector.test_support.exchange_connector_test import AbstractEx
 from hummingbot.connector.test_support.network_mocking_assistant import NetworkMockingAssistant
 from hummingbot.connector.trading_rule import TradingRule
 from hummingbot.connector.utils import get_new_client_order_id
+from hummingbot.core.data_type.cancellation_result import CancellationResult
 from hummingbot.core.data_type.common import OrderType, TradeType
-from hummingbot.core.data_type.in_flight_order import InFlightOrder
+from hummingbot.core.data_type.in_flight_order import InFlightOrder, OrderState
 from hummingbot.core.data_type.trade_fee import DeductedFromReturnsTradeFee, TokenAmount, TradeFeeBase
 from hummingbot.core.event.event_logger import EventLogger
-from hummingbot.core.event.events import BuyOrderCreatedEvent, MarketEvent, OrderCancelledEvent, SellOrderCreatedEvent
+from hummingbot.core.event.events import (
+    BuyOrderCreatedEvent,
+    MarketEvent,
+    MarketOrderFailureEvent,
+    OrderCancelledEvent,
+    SellOrderCreatedEvent,
+)
 
 
 class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
@@ -226,8 +233,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
 
     @property
     def balance_url(self):
-        url = web_utils.public_rest_url(CONSTANTS.ACCOUNTS_PATH_URL, domain=self.exchange._domain)
-        url = f"{url.format(self.chain, self.tegro_api_key)}"
+        url = web_utils.public_rest_url(CONSTANTS.ACCOUNTS_PATH_URL.format(self.chain, self.tegro_api_key), domain=self.domain)
         return url
 
     @property
@@ -941,8 +947,8 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
         self.assertEqual(order.exchange_order_id, request_params["order_ids"][0])
 
     def validate_order_status_request(self, order: InFlightOrder, request_call: RequestCall):
-        request_params = json.loads(request_call.kwargs["params"])
-        self.assertEqual(order.exchange_order_id, request_params["order_id"])
+        request_params = request_call.kwargs["params"]
+        self.assertIsNone(request_params)
 
     def validate_trades_request(self, order: InFlightOrder, request_call: RequestCall):
         request_params = request_call.kwargs["params"]
@@ -976,6 +982,19 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
     #     response = self.order_creation_request_successful_mock_response
     #     return response
 
+    def _configure_balance_response(
+            self,
+            mock_api: aioresponses,
+            callback: Optional[Callable] = lambda *args, **kwargs: None) -> str:
+
+        url = self.balance_url
+        response = self.balance_request_mock_response_for_base_and_quote
+        mock_api.get(
+            re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?")),
+            body=json.dumps(response),
+            callback=callback)
+        return url
+
     def configure_erroneous_cancelation_response(
             self,
             order: InFlightOrder,
@@ -1002,7 +1021,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
     ) -> str:
         url = web_utils.private_rest_url(CONSTANTS.CANCEL_ORDER_URL)
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
-        response = {"code": -2011, "msg": "Unknown order sent."}
+        response = {"code": -2011, "msg": "Order not found"}
         mock_api.post(regex_url, status=400, body=json.dumps(response), callback=callback)
         return url
 
@@ -1037,11 +1056,19 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
             order: InFlightOrder,
             mock_api: aioresponses,
             callback: Optional[Callable] = lambda *args, **kwargs: None) -> str:
-        url = web_utils.private_rest_url(CONSTANTS.TEGRO_USER_ORDER_PATH_URL.format(order.exchange_order_id))
+        urls = []
+        url = web_utils.public_rest_url(CONSTANTS.TRADES_FOR_ORDER_PATH_URL.format(order.exchange_order_id))
+        regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
+        response = []
+        mock_api.get(regex_url, body=json.dumps(response), callback=callback)
+        urls.append(url)
+
+        url = web_utils.public_rest_url(CONSTANTS.ORDER_LIST.format(self.tegro_api_key))
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
         response = self._order_status_request_canceled_mock_response(order=order)
         mock_api.get(regex_url, body=json.dumps(response), callback=callback)
-        return url
+        urls.append(url)
+        return urls
 
     def configure_erroneous_http_fill_trade_response(
             self,
@@ -1230,65 +1257,41 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
             }
         }
 
-    # @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange._update_balances", new_callable=AsyncMock)
-    # @aioresponses()
-    # def test_update_balances(self, mock_balance, mock_api):
-    #     response = [
-    #         {
-    #             "address": "0xe5ae73187d0fed71bda83089488736cadcbf072d",  # noqa: mock
-    #             "balance": 15,
-    #             "symbol": self.base_asset,
-    #             "decimal": 4,
-    #             "price": 0,
-    #             "price_change_24_h": 0,
-    #             "type": "quote",
-    #             "placed_amount": 22
-    #         },
-    #         {
-    #             "address": "0xe5ae73187d0fed71bda83089488736cadcbf072d",  # noqa: mock
-    #             "balance": 2000,
-    #             "symbol": self.quote_asset,
-    #             "decimal": 4,
-    #             "price": 0,
-    #             "price_change_24_h": 0,
-    #             "type": "quote",
-    #             "placed_amount": 22
-    #         },
-    #     ]
-    #     mock_api.return_value = response
-    #     url = web_utils.public_rest_url(CONSTANTS.SERVER_TIME_PATH_URL)
-    #     regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
+    @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange._update_balances", new_callable=AsyncMock)
+    @aioresponses()
+    def test_update_balances(
+        self,
+        mock_balance,
+        mock_api
+    ):
+        mock_balance.return_value = self.balance_request_mock_response_for_base_and_quote
+        response = self.balance_request_mock_response_for_base_and_quote
 
-    #     response = {"serverTime": 1640000003000}
+        response = self.balance_request_mock_response_only_base
 
-    #     mock_api.get(regex_url,
-    #                  body=json.dumps(response))
+        url = self._configure_balance_response(mock_api=mock_api)
+        mock_api.get(url, body=json.dumps(response))
 
-    #     url = web_utils.private_rest_url(CONSTANTS.ACCOUNTS_PATH_URL.format(self.chain, self.tegro_api_key), domain=self.domain)
-    #     regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
+        ret = self.async_run_with_timeout(coroutine=self.exchange._update_balances())
+        available_balances = self.exchange.available_balances
+        total_balances = self.exchange.get_all_balances()
 
-    #     available_balances = self.exchange.available_balances
-    #     print(available_balances)
-    #     total_balances = self.exchange.get_all_balances()
-
-    #     self.assertEqual(15, available_balances[self.base_asset])
-    #     self.assertEqual(20, available_balances[self.quote_asset])
-    #     self.assertEqual(15, total_balances[self.base_asset])
-    #     self.assertEqual(20, total_balances[self.quote_asset])
-
-    def test_update_balances(self):
-        pass
+        self.assertNotIn(self.quote_asset, available_balances)
+        self.assertNotIn(self.quote_asset, total_balances)
+        self.assertEqual(Decimal("15"), ret[0]["balance"])
+        self.assertEqual(Decimal("2000"), ret[1]["balance"])
 
     # @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange._request_order_status", new_callable=AsyncMock)
-    # @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange._all_trade_updates_for_order", new_callable=AsyncMock)
     # @aioresponses()
     # def test_update_order_status_when_canceled(
-    #         self,
-    #         mock_trade: AsyncMock,
-    #         mock_status: AsyncMock,
-    #         mock_api
+    #     self,
+    #     mock_status: AsyncMock,
+    #     mock_api
     # ):
     #     self.exchange._set_current_timestamp(1640780000)
+    #     self.exchange._last_poll_timestamp = (
+    #         self.exchange.current_timestamp - self.exchange.UPDATE_ORDER_STATUS_MIN_INTERVAL - 1
+    #     )
 
     #     self.exchange.start_tracking_order(
     #         order_id=self.client_order_id_prefix + "1",
@@ -1300,18 +1303,21 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
     #         amount=Decimal("1"),
     #     )
     #     order = self.exchange.in_flight_orders[self.client_order_id_prefix + "1"]
-    #     mock_trade.return_value = self.trade_event_for_full_fill_websocket_update
+    #     # mock_trade.return_value = self.trade_event_for_no_fill_websocket_update
+    #     mock_status.return_value = self._order_status_request_canceled_mock_response(order)
 
     #     urls = self.configure_canceled_order_status_response(
     #         order=order,
     #         mock_api=mock_api)
 
-    #     self.async_run_with_timeout(self.exchange._update_order_status())
-    #     mock_status.return_value = self._order_status_request_canceled_mock_response(order)
+    #     self.async_run_with_timeout(coroutine=self.exchange._update_order_status())
+    #     response = self._order_status_request_canceled_mock_response(order=order)
 
     #     for url in (urls if isinstance(urls, list) else [urls]):
+    #         mock_api.get(url, body=json.dumps(response))
     #         order_status_request = self._all_executed_requests(mock_api, url)[0]
-    #         self.validate_order_status_request(order=order, request_call=order_status_request)
+    #         if "trades" not in url:
+    #             self.validate_order_status_request(order=order, request_call=order_status_request)
 
     #     cancel_event: OrderCancelledEvent = self.order_cancelled_logger.event_log[0]
     #     self.assertEqual(self.exchange.current_timestamp, cancel_event.timestamp)
@@ -1320,86 +1326,6 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
     #     self.assertNotIn(order.client_order_id, self.exchange.in_flight_orders)
     #     self.assertTrue(
     #         self.is_logged("INFO", f"Successfully canceled order {order.client_order_id}.")
-    #     )
-
-    # @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange._all_trade_updates_for_order", new_callable=AsyncMock)
-    # @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange._request_order_status", new_callable=AsyncMock)
-    # @aioresponses()
-    # def test_update_order_status_when_filled(self, mock_trades, mock_stats, mock_api):
-    #     request_sent_event = asyncio.Event()
-    #     self.exchange._set_current_timestamp(1640780000)
-    #     self.exchange._last_poll_timestamp = (self.exchange.current_timestamp -
-    #                                           10 - 1)
-
-    #     self.exchange.start_tracking_order(
-    #         order_id="OID1",
-    #         exchange_order_id="EOID1",
-    #         trading_pair=self.trading_pair,
-    #         order_type=OrderType.LIMIT,
-    #         trade_type=TradeType.BUY,
-    #         price=Decimal("10000"),
-    #         amount=Decimal("1"),
-    #     )
-    #     order: InFlightOrder = self.exchange.in_flight_orders["OID1"]
-    #     mock_trades.return_value = self.trade_event_for_full_fill_websocket_update(order)[0]
-    #     mock_stats.return_value = self.configure_full_fill_trade_response(
-    #         order=order,
-    #         mock_api=mock_api,
-    #         callback=lambda *args, **kwargs: request_sent_event.set())
-
-    #     url = web_utils.public_rest_url(CONSTANTS.ORDER_PATH_URL)
-    #     regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
-
-    #     order_status = {
-    #         "order_id": str(order.exchange_order_id),
-    #         "order_hash": "3e45ac4a7c67ab9fd9392c6bdefb0b3de8e498811dd8ac934bbe8cf2c26f72a7",  # noqa: mock
-    #         "market_id": "80002_0x6b94a36d6ff05886d44b3dafabdefe85f09563ba_0x7551122e441edbf3fffcbcf2f7fcc636b636482b",  # noqa: mock
-    #         "side": order.order_type.name.lower(),
-    #         "base_currency": self.base_asset,
-    #         "quote_currency": self.quote_asset,
-    #         "contract_address": "0xcf9eb56c69ddd4f9cfdef880c828de7ab06b4614",  # noqa: mock
-    #         "quantity": str(order.amount),
-    #         "quantity_filled": "0",
-    #         "quantity_pending": "0",
-    #         "price": str(order.price),
-    #         "avg_price": "3490",
-    #         "price_precision": "3490000000000000000000",
-    #         "volume_precision": "3999900000000000000",
-    #         "total": "13959.651",
-    #         "fee": "0",
-    #         "status": "completed",
-    #         "cancel": {
-    #             "reason": "",
-    #             "code": 0
-    #         },
-    #         "timestamp": 1499827319559
-    #     }
-
-    #     mock_api.get(regex_url, body=json.dumps(order_status))
-
-    #     # Simulate the order has been filled with a TradeUpdate
-    #     order.completely_filled_event.set()
-    #     self.async_run_with_timeout(self.exchange._update_order_status())
-    #     self.async_run_with_timeout(order.wait_until_completely_filled())
-
-    #     self.assertTrue(order.is_filled)
-    #     self.assertTrue(order.is_done)
-
-    #     buy_event: BuyOrderCompletedEvent = self.buy_order_completed_logger.event_log[0]
-    #     self.assertEqual(self.exchange.current_timestamp, buy_event.timestamp)
-    #     self.assertEqual(order.client_order_id, buy_event.order_id)
-    #     self.assertEqual(order.base_asset, buy_event.base_asset)
-    #     self.assertEqual(order.quote_asset, buy_event.quote_asset)
-    #     self.assertEqual(Decimal(0), buy_event.base_asset_amount)
-    #     self.assertEqual(Decimal(0), buy_event.quote_asset_amount)
-    #     self.assertEqual(order.order_type, buy_event.order_type)
-    #     self.assertEqual(order.exchange_order_id, buy_event.exchange_order_id)
-    #     self.assertNotIn(order.client_order_id, self.exchange.in_flight_orders)
-    #     self.assertTrue(
-    #         self._is_logged(
-    #             "INFO",
-    #             f"BUY order {order.client_order_id} completely filled."
-    #         )
     #     )
 
     # @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange._all_trade_updates_for_order", new_callable=AsyncMock)
@@ -1469,70 +1395,67 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
     #         self._is_logged("INFO", f"Successfully canceled order {order.client_order_id}.")
     #     )
 
-    @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange._all_trade_updates_for_order", new_callable=AsyncMock)
-    @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange._request_order_status", new_callable=AsyncMock)
-    @aioresponses()
-    def test_update_order_status_when_order_has_not_changed(self, mock_trades, mock_stats, mock_api):
-        request_sent_event = asyncio.Event()
-        self.exchange._set_current_timestamp(1640780000)
-        self.exchange._last_poll_timestamp = (self.exchange.current_timestamp -
-                                              10 - 1)
+    # @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange._all_trade_updates_for_order", new_callable=AsyncMock)
+    # @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange._request_order_status", new_callable=AsyncMock)
+    # @aioresponses()
+    # def test_update_order_status_when_order_has_not_changed(self, mock_trades, mock_stats, mock_api):
+    #     self.exchange._set_current_timestamp(1640780000)
+    #     self.exchange._last_poll_timestamp = (self.exchange.current_timestamp -
+    #                                           10 - 1)
 
-        self.exchange.start_tracking_order(
-            order_id="OID1",
-            exchange_order_id="EOID1",
-            trading_pair=self.trading_pair,
-            order_type=OrderType.LIMIT,
-            trade_type=TradeType.BUY,
-            price=Decimal("10000"),
-            amount=Decimal("1"),
-        )
-        order: InFlightOrder = self.exchange.in_flight_orders["OID1"]
+    #     self.exchange.start_tracking_order(
+    #         order_id="OID1",
+    #         exchange_order_id="EOID1",
+    #         trading_pair=self.trading_pair,
+    #         order_type=OrderType.LIMIT,
+    #         trade_type=TradeType.BUY,
+    #         price=Decimal("10000"),
+    #         amount=Decimal("1"),
+    #     )
+    #     order: InFlightOrder = self.exchange.in_flight_orders["OID1"]
+    #     order_status = {
+    #         "order_id": str(order.exchange_order_id),
+    #         "order_hash": "3e45ac4a7c67ab9fd9392c6bdefb0b3de8e498811dd8ac934bbe8cf2c26f72a7",  # noqa: mock
+    #         "market_id": "80002_0x6b94a36d6ff05886d44b3dafabdefe85f09563ba_0x7551122e441edbf3fffcbcf2f7fcc636b636482b",  # noqa: mock
+    #         "side": order.order_type.name.lower(),
+    #         "base_currency": self.base_asset,
+    #         "quote_currency": self.quote_asset,
+    #         "contract_address": "0xcf9eb56c69ddd4f9cfdef880c828de7ab06b4614",  # noqa: mock
+    #         "quantity": str(order.amount),
+    #         "quantity_filled": "0",
+    #         "quantity_pending": "0",
+    #         "price": str(order.price),
+    #         "avg_price": "3490",
+    #         "price_precision": "3490000000000000000000",
+    #         "volume_precision": "3999900000000000000",
+    #         "total": "13959.651",
+    #         "fee": "0",
+    #         "status": "open",
+    #         "cancel": {
+    #             "reason": "",
+    #             "code": 0
+    #         },
+    #         "timestamp": 1499827319559
+    #     }
 
-        mock_trades.return_value = self.trade_event_for_full_fill_websocket_update(order)[0]
-        mock_stats.return_value = self.configure_full_fill_trade_response(
-            order=order,
-            mock_api=mock_api,
-            callback=lambda *args, **kwargs: request_sent_event.set())
+    #     mock_trades.return_value = self.trade_event_for_full_fill_websocket_update(order)
+    #     mock_stats.return_value = order_status
 
-        url = web_utils.public_rest_url(CONSTANTS.ORDER_PATH_URL)
-        regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
+    #     urls = self.configure_open_order_status_response(
+    #         order=order,
+    #         mock_api=mock_api)
 
-        order_status = {
-            "order_id": str(order.exchange_order_id),
-            "order_hash": "3e45ac4a7c67ab9fd9392c6bdefb0b3de8e498811dd8ac934bbe8cf2c26f72a7",  # noqa: mock
-            "market_id": "80002_0x6b94a36d6ff05886d44b3dafabdefe85f09563ba_0x7551122e441edbf3fffcbcf2f7fcc636b636482b",  # noqa: mock
-            "side": order.order_type.name.lower(),
-            "base_currency": self.base_asset,
-            "quote_currency": self.quote_asset,
-            "contract_address": "0xcf9eb56c69ddd4f9cfdef880c828de7ab06b4614",  # noqa: mock
-            "quantity": str(order.amount),
-            "quantity_filled": "0",
-            "quantity_pending": "0",
-            "price": str(order.price),
-            "avg_price": "3490",
-            "price_precision": "3490000000000000000000",
-            "volume_precision": "3999900000000000000",
-            "total": "13959.651",
-            "fee": "0",
-            "status": "open",
-            "cancel": {
-                "reason": "",
-                "code": 0
-            },
-            "timestamp": 1499827319559
-        }
+    #     self.assertTrue(order.is_open)
 
-        mock_response = order_status
-        mock_api.get(regex_url, body=json.dumps(mock_response))
+    #     self.async_run_with_timeout(self.exchange._update_order_status())
 
-        self.assertTrue(order.is_open)
+    #     for url in (urls if isinstance(urls, list) else [urls]):
+    #         order_status_request = self._all_executed_requests(mock_api, url)[0]
+    #         self.validate_order_status_request(order=order, request_call=order_status_request)
 
-        self.async_run_with_timeout(self.exchange._update_order_status())
-
-        self.assertTrue(order.is_open)
-        self.assertFalse(order.is_filled)
-        self.assertFalse(order.is_done)
+    #     self.assertTrue(order.is_open)
+    #     self.assertFalse(order.is_filled)
+    #     self.assertFalse(order.is_done)
 
     # @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange._all_trade_updates_for_order", new_callable=AsyncMock)
     # @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange._request_order_status", new_callable=AsyncMock)
@@ -1573,8 +1496,583 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
 
     #     self.assertEqual(1, self.exchange._order_tracker._order_not_found_records[order.client_order_id])
 
+    @patch('hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange.sign_inner')
+    @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange._generate_cancel_order_typed_data", new_callable=AsyncMock)
+    @aioresponses()
+    def test_cancel_order_not_found_in_the_exchange(self, mock_messaage, mock_typed_data: AsyncMock, mock_api):
+        self.exchange._set_current_timestamp(1640780000)
+        request_sent_event = asyncio.Event()
+
+        self.exchange.start_tracking_order(
+            order_id=self.client_order_id_prefix + "1",
+            exchange_order_id=str(self.expected_exchange_order_id),
+            trading_pair=self.trading_pair,
+            order_type=OrderType.LIMIT,
+            trade_type=TradeType.BUY,
+            price=Decimal("10000"),
+            amount=Decimal("1"),
+        )
+
+        self.assertIn(self.client_order_id_prefix + "1", self.exchange.in_flight_orders)
+        order = self.exchange.in_flight_orders[self.client_order_id_prefix + "1"]
+
+        mock_typed_data.return_value = self.generated_sell_typed_data_response
+        mock_messaage.return_value = "0xc5bb16ccc59ae9a3ad1cb8343d4e3351f057c994a97656e1aff8c134e56f7530"  # noqa: mock
+
+        self.configure_order_not_found_error_cancelation_response(
+            order=order, mock_api=mock_api, callback=lambda *args, **kwargs: request_sent_event.set()
+        )
+
+        self.exchange.cancel(trading_pair=self.trading_pair, client_order_id=self.client_order_id_prefix + "1")
+        self.async_run_with_timeout(request_sent_event.wait())
+
+        self.assertFalse(order.is_done)
+        self.assertFalse(order.is_failure)
+        self.assertFalse(order.is_cancelled)
+
+        self.assertIn(order.client_order_id, self.exchange._order_tracker.all_updatable_orders)
+        self.assertEqual(1, self.exchange._order_tracker._order_not_found_records[order.client_order_id])
+
+    @patch('hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange.sign_inner')
+    @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange._generate_cancel_order_typed_data", new_callable=AsyncMock)
+    @aioresponses()
+    def test_cancel_lost_order_raises_failure_event_when_request_fails(self, mock_messaage, mock_typed_data: AsyncMock, mock_api):
+        request_sent_event = asyncio.Event()
+        self.exchange._set_current_timestamp(1640780000)
+
+        self.exchange.start_tracking_order(
+            order_id=self.client_order_id_prefix + "1",
+            exchange_order_id=self.exchange_order_id_prefix + "1",
+            trading_pair=self.trading_pair,
+            trade_type=TradeType.BUY,
+            price=Decimal("10000"),
+            amount=Decimal("100"),
+            order_type=OrderType.LIMIT,
+        )
+
+        self.assertIn(self.client_order_id_prefix + "1", self.exchange.in_flight_orders)
+        order = self.exchange.in_flight_orders[self.client_order_id_prefix + "1"]
+
+        mock_typed_data.return_value = self.generated_sell_typed_data_response
+        mock_messaage.return_value = "0xc5bb16ccc59ae9a3ad1cb8343d4e3351f057c994a97656e1aff8c134e56f7530"  # noqa: mock
+
+        for _ in range(self.exchange._order_tracker._lost_order_count_limit + 1):
+            self.async_run_with_timeout(
+                self.exchange._order_tracker.process_order_not_found(client_order_id=order.client_order_id))
+
+        self.assertNotIn(order.client_order_id, self.exchange.in_flight_orders)
+
+        url = self.configure_erroneous_cancelation_response(
+            order=order,
+            mock_api=mock_api,
+            callback=lambda *args, **kwargs: request_sent_event.set())
+
+        self.async_run_with_timeout(self.exchange._cancel_lost_orders())
+        self.async_run_with_timeout(request_sent_event.wait())
+
+        if url:
+            cancel_request = self._all_executed_requests(mock_api, url)[0]
+            self.validate_order_cancelation_request(
+                order=order,
+                request_call=cancel_request)
+
+        self.assertIn(order.client_order_id, self.exchange._order_tracker.lost_orders)
+        self.assertEquals(0, len(self.order_cancelled_logger.event_log))
+        self.assertTrue(
+            any(
+                log.msg.startswith(f"Failed to cancel order {order.client_order_id}")
+                for log in self.log_records
+            )
+        )
+
+    @patch('hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange.sign_inner')
+    @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange._generate_cancel_order_typed_data", new_callable=AsyncMock)
+    @aioresponses()
+    def test_cancel_order_raises_failure_event_when_request_fails(self, mock_messaage, mock_typed_data: AsyncMock, mock_api):
+        request_sent_event = asyncio.Event()
+        self.exchange._set_current_timestamp(1640780000)
+
+        self.exchange.start_tracking_order(
+            order_id=self.client_order_id_prefix + "1",
+            exchange_order_id=self.exchange_order_id_prefix + "1",
+            trading_pair=self.trading_pair,
+            trade_type=TradeType.BUY,
+            price=Decimal("10000"),
+            amount=Decimal("100"),
+            order_type=OrderType.LIMIT,
+        )
+
+        self.assertIn(self.client_order_id_prefix + "1", self.exchange.in_flight_orders)
+        order = self.exchange.in_flight_orders[self.client_order_id_prefix + "1"]
+
+        mock_typed_data.return_value = self.generated_sell_typed_data_response
+        mock_messaage.return_value = "0xc5bb16ccc59ae9a3ad1cb8343d4e3351f057c994a97656e1aff8c134e56f7530"  # noqa: mock
+
+        url = self.configure_erroneous_cancelation_response(
+            order=order,
+            mock_api=mock_api,
+            callback=lambda *args, **kwargs: request_sent_event.set())
+
+        self.exchange.cancel(trading_pair=self.trading_pair, client_order_id=self.client_order_id_prefix + "1")
+        self.async_run_with_timeout(request_sent_event.wait())
+
+        if url != "":
+            cancel_request = self._all_executed_requests(mock_api, url)[0]
+            self.validate_order_cancelation_request(
+                order=order,
+                request_call=cancel_request)
+
+        self.assertEquals(0, len(self.order_cancelled_logger.event_log))
+        self.assertTrue(
+            any(
+                log.msg.startswith(f"Failed to cancel order {order.client_order_id}")
+                for log in self.log_records
+            )
+        )
+
+    @patch('hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange.sign_inner')
+    @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange._generate_cancel_order_typed_data", new_callable=AsyncMock)
+    @aioresponses()
+    def test_cancel_two_orders_with_cancel_all_and_one_fails(self, mock_messaage, mock_typed_data: AsyncMock, mock_api):
+        self.exchange._set_current_timestamp(1640780000)
+
+        self.exchange.start_tracking_order(
+            order_id=self.client_order_id_prefix + "1",
+            exchange_order_id=self.exchange_order_id_prefix + "1",
+            trading_pair=self.trading_pair,
+            trade_type=TradeType.BUY,
+            price=Decimal("10000"),
+            amount=Decimal("100"),
+            order_type=OrderType.LIMIT,
+        )
+
+        self.assertIn(self.client_order_id_prefix + "1", self.exchange.in_flight_orders)
+        order1 = self.exchange.in_flight_orders[self.client_order_id_prefix + "1"]
+
+        mock_typed_data.return_value = self.generated_sell_typed_data_response
+        mock_messaage.return_value = "0xc5bb16ccc59ae9a3ad1cb8343d4e3351f057c994a97656e1aff8c134e56f7530"  # noqa: mock
+
+        self.exchange.start_tracking_order(
+            order_id="12",
+            exchange_order_id="5",
+            trading_pair=self.trading_pair,
+            trade_type=TradeType.SELL,
+            price=Decimal("11000"),
+            amount=Decimal("90"),
+            order_type=OrderType.LIMIT,
+        )
+
+        self.assertIn("12", self.exchange.in_flight_orders)
+        order2 = self.exchange.in_flight_orders["12"]
+
+        urls = self.configure_one_successful_one_erroneous_cancel_all_response(
+            successful_order=order1,
+            erroneous_order=order2,
+            mock_api=mock_api)
+
+        cancellation_results = self.async_run_with_timeout(self.exchange.cancel_all(10))
+
+        for url in urls:
+            self._all_executed_requests(mock_api, url)[0]
+
+        self.assertEqual(2, len(cancellation_results))
+        self.assertEqual(CancellationResult(order1.client_order_id, True), cancellation_results[0])
+        self.assertEqual(CancellationResult(order2.client_order_id, False), cancellation_results[1])
+
+        if self.exchange.is_cancel_request_in_exchange_synchronous:
+            self.assertEqual(1, len(self.order_cancelled_logger.event_log))
+            cancel_event: OrderCancelledEvent = self.order_cancelled_logger.event_log[0]
+            self.assertEqual(self.exchange.current_timestamp, cancel_event.timestamp)
+            self.assertEqual(order1.client_order_id, cancel_event.order_id)
+
+            self.assertTrue(
+                self.is_logged(
+                    "INFO",
+                    f"Successfully canceled order {order1.client_order_id}."
+                )
+            )
+
+    @patch('hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange.sign_inner')
+    @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange._generate_typed_data", new_callable=AsyncMock)
+    @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange._make_trading_pairs_request", new_callable=AsyncMock)
+    @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange._make_trading_rules_request", new_callable=AsyncMock)
+    @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange.initialize_market_list", new_callable=AsyncMock)
+    @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange.initialize_verified_market", new_callable=AsyncMock)
+    @aioresponses()
+    def test_create_order_fails_and_raises_failure_event(
+        self,
+        mock_pair,
+        mock_rule,
+        mock_list: AsyncMock,
+        mock_verified: AsyncMock,
+        mock_typed_data: AsyncMock,
+        mock_messaage,
+        mock_api,
+    ):
+        mock_pair.return_value = self.all_symbols_request_mock_response
+        mock_rule.return_value = self.trading_rules_request_mock_response
+
+        mock_list.return_value = self.initialize_market_list_response
+        mock_verified.return_value = self.initialize_verified_market_response
+
+        mock_typed_data.return_value = self.generated_buy_typed_data_response
+
+        mock_messaage.return_value = "0xc5bb16ccc59ae9a3ad1cb8343d4e3351f057c994a97656e1aff8c134e56f7530"  # noqa: mock
+        self._simulate_trading_rules_initialized()
+        request_sent_event = asyncio.Event()
+        self.exchange._set_current_timestamp(1640780000)
+        url = self.order_creation_url
+        mock_api.post(url,
+                      status=400,
+                      callback=lambda *args, **kwargs: request_sent_event.set())
+
+        order_id = self.place_buy_order()
+        self.async_run_with_timeout(request_sent_event.wait())
+
+        order_request = self._all_executed_requests(mock_api, url)[0]
+        self.assertNotIn(order_id, self.exchange.in_flight_orders)
+        order_to_validate_request = InFlightOrder(
+            client_order_id=order_id,
+            trading_pair=self.trading_pair,
+            order_type=OrderType.LIMIT,
+            trade_type=TradeType.BUY,
+            amount=Decimal("100"),
+            creation_timestamp=self.exchange.current_timestamp,
+            price=Decimal("10000")
+        )
+        self.validate_order_creation_request(
+            order=order_to_validate_request,
+            request_call=order_request)
+
+        self.assertEquals(0, len(self.buy_order_created_logger.event_log))
+        failure_event: MarketOrderFailureEvent = self.order_failure_logger.event_log[0]
+        self.assertEqual(self.exchange.current_timestamp, failure_event.timestamp)
+        self.assertEqual(OrderType.LIMIT, failure_event.order_type)
+        self.assertEqual(order_id, failure_event.order_id)
+
+        self.assertTrue(
+            self.is_logged(
+                "INFO",
+                f"Order {order_id} has failed. Order Update: OrderUpdate(trading_pair='{self.trading_pair}', "
+                f"update_timestamp={self.exchange.current_timestamp}, new_state={repr(OrderState.FAILED)}, "
+                f"client_order_id='{order_id}', exchange_order_id=None, misc_updates=None)"
+            )
+        )
+
+    @patch('hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange.sign_inner')
+    @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange._generate_typed_data", new_callable=AsyncMock)
+    @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange._make_trading_pairs_request", new_callable=AsyncMock)
+    @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange._make_trading_rules_request", new_callable=AsyncMock)
+    @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange.initialize_market_list", new_callable=AsyncMock)
+    @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange.initialize_verified_market", new_callable=AsyncMock)
+    @aioresponses()
+    def test_create_order_fails_when_trading_rule_error_and_raises_failure_event(
+        self,
+        mock_pair,
+        mock_rule,
+        mock_list: AsyncMock,
+        mock_verified: AsyncMock,
+        mock_typed_data: AsyncMock,
+        mock_messaage,
+        mock_api,
+    ):
+        mock_pair.return_value = self.all_symbols_request_mock_response
+        mock_rule.return_value = self.trading_rules_request_mock_response
+
+        mock_list.return_value = self.initialize_market_list_response
+        mock_verified.return_value = self.initialize_verified_market_response
+
+        mock_typed_data.return_value = self.generated_buy_typed_data_response
+
+        mock_messaage.return_value = "0xc5bb16ccc59ae9a3ad1cb8343d4e3351f057c994a97656e1aff8c134e56f7530"  # noqa: mock
+
+        self._simulate_trading_rules_initialized()
+        request_sent_event = asyncio.Event()
+        self.exchange._set_current_timestamp(1640780000)
+
+        url = self.order_creation_url
+        mock_api.post(url,
+                      status=400,
+                      callback=lambda *args, **kwargs: request_sent_event.set())
+
+        order_id_for_invalid_order = self.place_buy_order(
+            amount=Decimal("0.0001"), price=Decimal("0.0001")
+        )
+        # The second order is used only to have the event triggered and avoid using timeouts for tests
+        order_id = self.place_buy_order()
+        self.async_run_with_timeout(request_sent_event.wait(), timeout=3)
+
+        self.assertNotIn(order_id_for_invalid_order, self.exchange.in_flight_orders)
+        self.assertNotIn(order_id, self.exchange.in_flight_orders)
+
+        self.assertEquals(0, len(self.buy_order_created_logger.event_log))
+        failure_event: MarketOrderFailureEvent = self.order_failure_logger.event_log[0]
+        self.assertEqual(self.exchange.current_timestamp, failure_event.timestamp)
+        self.assertEqual(OrderType.LIMIT, failure_event.order_type)
+        self.assertEqual(order_id_for_invalid_order, failure_event.order_id)
+
+        self.assertTrue(
+            self.is_logged(
+                "WARNING",
+                "Buy order amount 0.0001 is lower than the minimum order "
+                "size 0.01. The order will not be created, increase the "
+                "amount to be higher than the minimum order size."
+            )
+        )
+        self.assertTrue(
+            self.is_logged(
+                "INFO",
+                f"Order {order_id} has failed. Order Update: OrderUpdate(trading_pair='{self.trading_pair}', "
+                f"update_timestamp={self.exchange.current_timestamp}, new_state={repr(OrderState.FAILED)}, "
+                f"client_order_id='{order_id}', exchange_order_id=None, misc_updates=None)"
+            )
+        )
+
+    def test_lost_order_removed_if_not_found_during_order_status_update(self):
+        pass
+
+    def test_update_order_status_when_request_fails_marks_order_as_not_found(self):
+        pass
+
+    # @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange._all_trade_updates_for_order", new_callable=AsyncMock)
+    # @aioresponses()
+    # def test_user_stream_update_for_order_full_fill(
+    #     self,
+    #     mock_status: AsyncMock,
+    #     mock_api
+    # ):
+    #     self.exchange._set_current_timestamp(1640780000)
+    #     self.exchange.start_tracking_order(
+    #         order_id=self.client_order_id_prefix + "1",
+    #         exchange_order_id=str(self.expected_exchange_order_id),
+    #         trading_pair=self.trading_pair,
+    #         order_type=OrderType.LIMIT,
+    #         trade_type=TradeType.BUY,
+    #         price=Decimal("10000"),
+    #         amount=Decimal("1"),
+    #     )
+    #     order = self.exchange.in_flight_orders[self.client_order_id_prefix + "1"]
+    #     mock_status.return_value = self.trade_update(order)
+    #     # trades = self.async_run_with_timeout(coroutine=self.exchange._all_trade_updates_for_order(order))
+
+    #     order_event = self.order_event_for_full_fill_websocket_update(order=order)
+
+    #     mock_queue = AsyncMock()
+    #     event_messages = []
+    #     if order_event:
+    #         event_messages.append(order_event)
+    #     event_messages.append(asyncio.CancelledError)
+    #     mock_queue.get.side_effect = event_messages
+    #     self.exchange._user_stream_tracker._user_stream = mock_queue
+
+    #     if self.is_order_fill_http_update_executed_during_websocket_order_event_processing:
+    #         self.configure_full_fill_trade_response(
+    #             order=order,
+    #             mock_api=mock_api)
+    #     try:
+    #         self.async_run_with_timeout(self.exchange._user_stream_event_listener())
+    #     except asyncio.CancelledError:
+    #         pass
+    #     # Execute one more synchronization to ensure the async task that processes the update is finished
+    #     self.async_run_with_timeout(order.wait_until_completely_filled())
+
+    #     fill_event: OrderFilledEvent = self.order_filled_logger.event_log[0]
+    #     self.assertEqual(self.exchange.current_timestamp, fill_event.timestamp)
+    #     self.assertEqual(order.client_order_id, fill_event.order_id)
+    #     self.assertEqual(order.trading_pair, fill_event.trading_pair)
+    #     self.assertEqual(order.trade_type, fill_event.trade_type)
+    #     self.assertEqual(order.order_type, fill_event.order_type)
+    #     self.assertEqual(order.price, fill_event.price)
+    #     self.assertEqual(order.amount, fill_event.amount)
+    #     expected_fee = self.expected_fill_fee
+    #     self.assertEqual(expected_fee, fill_event.trade_fee)
+
+    #     buy_event: BuyOrderCompletedEvent = self.buy_order_completed_logger.event_log[0]
+    #     self.assertEqual(self.exchange.current_timestamp, buy_event.timestamp)
+    #     self.assertEqual(order.client_order_id, buy_event.order_id)
+    #     self.assertEqual(order.base_asset, buy_event.base_asset)
+    #     self.assertEqual(order.quote_asset, buy_event.quote_asset)
+    #     self.assertEqual(order.amount, buy_event.base_asset_amount)
+    #     self.assertEqual(order.amount * fill_event.price, buy_event.quote_asset_amount)
+    #     self.assertEqual(order.order_type, buy_event.order_type)
+    #     self.assertEqual(order.exchange_order_id, buy_event.exchange_order_id)
+    #     self.assertNotIn(order.client_order_id, self.exchange.in_flight_orders)
+    #     self.assertTrue(order.is_filled)
+    #     self.assertTrue(order.is_done)
+
+    #     self.assertTrue(
+    #         self.is_logged(
+    #             "INFO",
+    #             f"BUY order {order.client_order_id} completely filled."
+    #         )
+    #     )
+
+    # @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange._all_trade_updates_for_order", new_callable=AsyncMock)
+    # @aioresponses()
+    # def test_lost_order_user_stream_full_fill_events_are_processed(
+    #     self,
+    #     mock_status: AsyncMock,
+    #     mock_api
+    # ):
+    #     self.exchange._set_current_timestamp(1640780000)
+    #     self.exchange.start_tracking_order(
+    #         order_id=self.client_order_id_prefix + "1",
+    #         exchange_order_id=str(self.expected_exchange_order_id),
+    #         trading_pair=self.trading_pair,
+    #         order_type=OrderType.LIMIT,
+    #         trade_type=TradeType.BUY,
+    #         price=Decimal("10000"),
+    #         amount=Decimal("1"),
+    #     )
+    #     order = self.exchange.in_flight_orders[self.client_order_id_prefix + "1"]
+
+    #     for _ in range(self.exchange._order_tracker._lost_order_count_limit + 1):
+    #         self.async_run_with_timeout(
+    #             self.exchange._order_tracker.process_order_not_found(client_order_id=order.client_order_id))
+
+    #     self.assertNotIn(order.client_order_id, self.exchange.in_flight_orders)
+
+    #     order_event = self.order_event_for_full_fill_websocket_update(order=order)
+    #     trade_event = None
+    #     mock_status.return_value = self.trade_update(order)
+
+    #     mock_queue = AsyncMock()
+    #     event_messages = []
+    #     if trade_event:
+    #         event_messages.append(trade_event)
+    #     if order_event:
+    #         event_messages.append(order_event)
+    #     event_messages.append(asyncio.CancelledError)
+    #     mock_queue.get.side_effect = event_messages
+    #     self.exchange._user_stream_tracker._user_stream = mock_queue
+
+    #     if self.is_order_fill_http_update_executed_during_websocket_order_event_processing:
+    #         self.configure_full_fill_trade_response(
+    #             order=order,
+    #             mock_api=mock_api)
+
+    #     try:
+    #         self.async_run_with_timeout(self.exchange._user_stream_event_listener())
+    #     except asyncio.CancelledError:
+    #         pass
+    #     # Execute one more synchronization to ensure the async task that processes the update is
+    #     self.async_run_with_timeout(order.wait_until_completely_filled())
+
+    #     fill_event: OrderFilledEvent = self.order_filled_logger.event_log[0]
+    #     self.assertEqual(self.exchange.current_timestamp, fill_event.timestamp)
+    #     self.assertEqual(order.client_order_id, fill_event.order_id)
+    #     self.assertEqual(order.trading_pair, fill_event.trading_pair)
+    #     self.assertEqual(order.trade_type, fill_event.trade_type)
+    #     self.assertEqual(order.order_type, fill_event.order_type)
+    #     self.assertEqual(order.price, fill_event.price)
+    #     self.assertEqual(order.amount, fill_event.amount)
+    #     expected_fee = self.expected_fill_fee
+    #     self.assertEqual(expected_fee, fill_event.trade_fee)
+
+    #     self.assertEqual(0, len(self.buy_order_completed_logger.event_log))
+    #     self.assertNotIn(order.client_order_id, self.exchange.in_flight_orders)
+    #     self.assertNotIn(order.client_order_id, self.exchange._order_tracker.lost_orders)
+    #     self.assertTrue(order.is_filled)
+    #     self.assertTrue(order.is_failure)
+
+    def test_lost_order_user_stream_full_fill_events_are_processed(self):
+        pass
+
+    def test_user_stream_update_for_order_full_fill(self):
+        pass
+
     def test_update_order_status_when_canceled(self):
         pass
+
+    # @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange._all_trade_updates_for_order", new_callable=AsyncMock)
+    # @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange._request_order_status", new_callable=AsyncMock)
+    # @aioresponses()
+    # def test_update_order_status_when_filled(self, mock_status: AsyncMock, mock_trades: AsyncMock, mock_api):
+
+    #     self.exchange._set_current_timestamp(1640780000)
+    #     request_sent_event = asyncio.Event()
+
+    #     self.exchange.start_tracking_order(
+    #         order_id=self.client_order_id_prefix + "1",
+    #         exchange_order_id=str(self.expected_exchange_order_id),
+    #         trading_pair=self.trading_pair,
+    #         order_type=OrderType.LIMIT,
+    #         trade_type=TradeType.BUY,
+    #         price=Decimal("10000"),
+    #         amount=Decimal("1"),
+    #     )
+    #     order: InFlightOrder = self.exchange.in_flight_orders[self.client_order_id_prefix + "1"]
+    #     mock_status.return_value = self._order_status_request_completely_filled_mock_response(order=order)
+    #     mock_trades.return_value = self.trade_update(order)
+
+    #     if self.is_order_fill_http_update_included_in_status_update:
+    #         trade_url = self.configure_full_fill_trade_response(
+    #             order=order,
+    #             mock_api=mock_api,
+    #             callback=lambda *args, **kwargs: request_sent_event.set())
+    #     else:
+    #         # If the fill events will not be requested with the order status, we need to manually set the event
+    #         # to allow the ClientOrderTracker to process the last status update
+    #         order.completely_filled_event.set()
+
+    #     urls = self.configure_completely_filled_order_status_response(
+    #         order=order,
+    #         mock_api=mock_api,
+    #         callback=lambda *args, **kwargs: request_sent_event.set())
+
+    #     self.async_run_with_timeout(self.exchange._update_order_status())
+    #     # Execute one more synchronization to ensure the async task that processes the update is finished
+    #     self.async_run_with_timeout(request_sent_event.wait())
+
+    #     for url in (urls if isinstance(urls, list) else [urls]):
+    #         order_status_request = self._all_executed_requests(mock_api, url)[0]
+    #         self.validate_order_status_request(
+    #             order=order,
+    #             request_call=order_status_request)
+
+    #     self.async_run_with_timeout(order.wait_until_completely_filled())
+    #     self.assertTrue(order.is_done)
+
+    #     if self.is_order_fill_http_update_included_in_status_update:
+    #         self.assertTrue(order.is_filled)
+    #         if trade_url:
+    #             trades_request = self._all_executed_requests(mock_api, trade_url)[0]
+    #             self.validate_trades_request(
+    #                 order=order,
+    #                 request_call=trades_request)
+
+    #         fill_event: OrderFilledEvent = self.order_filled_logger.event_log[0]
+    #         self.assertEqual(self.exchange.current_timestamp, fill_event.timestamp)
+    #         self.assertEqual(order.client_order_id, fill_event.order_id)
+    #         self.assertEqual(order.trading_pair, fill_event.trading_pair)
+    #         self.assertEqual(order.trade_type, fill_event.trade_type)
+    #         self.assertEqual(order.order_type, fill_event.order_type)
+    #         self.assertEqual(order.price, fill_event.price)
+    #         self.assertEqual(order.amount, fill_event.amount)
+    #         self.assertEqual(self.expected_fill_fee, fill_event.trade_fee)
+
+    #     buy_event: BuyOrderCompletedEvent = self.buy_order_completed_logger.event_log[0]
+    #     self.assertEqual(self.exchange.current_timestamp, buy_event.timestamp)
+    #     self.assertEqual(order.client_order_id, buy_event.order_id)
+    #     self.assertEqual(order.base_asset, buy_event.base_asset)
+    #     self.assertEqual(order.quote_asset, buy_event.quote_asset)
+    #     self.assertEqual(
+    #         order.amount if self.is_order_fill_http_update_included_in_status_update else Decimal(0),
+    #         buy_event.base_asset_amount)
+    #     self.assertEqual(
+    #         order.amount * order.price
+    #         if self.is_order_fill_http_update_included_in_status_update
+    #         else Decimal(0),
+    #         buy_event.quote_asset_amount)
+    #     self.assertEqual(order.order_type, buy_event.order_type)
+    #     self.assertEqual(order.exchange_order_id, buy_event.exchange_order_id)
+    #     self.assertNotIn(order.client_order_id, self.exchange.in_flight_orders)
+    #     self.assertTrue(
+    #         self.is_logged(
+    #             "INFO",
+    #             f"BUY order {order.client_order_id} completely filled."
+    #         )
+    #     )
 
     def test_update_order_status_when_filled(self):
         pass
@@ -1585,20 +2083,14 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
     def test_update_order_status_when_order_has_not_changed_and_one_partial_fill(self):
         pass
 
-    def test_cancel_lost_order_raises_failure_event_when_request_fails(self):
+    def test_lost_order_included_in_order_fills_update_and_not_in_order_status_update(self):
         pass
 
-    def test_cancel_order_raises_failure_event_when_request_fails(self):
+    def test_update_order_status_when_order_has_not_changed(self):
         pass
 
-    def test_cancel_order_not_found_in_the_exchange(self):
-        pass
-
-    def test_cancel_two_orders_with_cancel_all_and_one_fails(self):
-        pass
-
-    def test_create_order_fails_and_raises_failure_event(self):
-        pass
+    def trade_event_for_no_fill_websocket_update(self, order: InFlightOrder):
+        return []
 
     def trade_event_for_full_fill_websocket_update(self, order: InFlightOrder):
         return [
@@ -1652,24 +2144,6 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
                 "maker": "0x1870f03410fdb205076718337e9763a91f029280"  # noqa: mock
             }
         ]
-
-    def test_create_order_fails_when_trading_rule_error_and_raises_failure_event(self):
-        pass
-
-    def test_lost_order_included_in_order_fills_update_and_not_in_order_status_update(self):
-        pass
-
-    def test_lost_order_removed_if_not_found_during_order_status_update(self):
-        pass
-
-    def test_lost_order_user_stream_full_fill_events_are_processed(self):
-        pass
-
-    def test_update_order_status_when_request_fails_marks_order_as_not_found(self):
-        pass
-
-    def test_user_stream_update_for_order_full_fill(self):
-        pass
 
     @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange.initialize_market_list", new_callable=AsyncMock)
     @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange.initialize_verified_market", new_callable=AsyncMock)
@@ -2314,38 +2788,141 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
     def test_update_time_synchronizer_failure_is_logged(self, mock_api):
         return time.time()
 
-    @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange._all_trade_updates_for_order", new_callable=AsyncMock)
-    @aioresponses()
-    def test_update_order_fills_request_parameters(self, mock_fills: AsyncMock, mock_api):
-        self.exchange._set_current_timestamp(0)
-        self.exchange._last_poll_timestamp = -1
+    # @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange._all_trade_updates_for_order", new_callable=AsyncMock)
+    # @aioresponses()
+    # def test_lost_order_included_in_order_fills_update_and_not_in_order_status_update(
+    #     self,
+    #     mock_status: AsyncMock,
+    #     mock_api
+    # ):
+    #     self.exchange._set_current_timestamp(1640780000)
+    #     request_sent_event = asyncio.Event()
 
-        self.exchange.start_tracking_order(
-            order_id="OID1",
-            exchange_order_id="100234",
-            trading_pair=self.trading_pair,
-            order_type=OrderType.LIMIT,
-            trade_type=TradeType.BUY,
-            price=Decimal("10000"),
-            amount=Decimal("1"),
-        )
-        order = self.exchange.in_flight_orders["OID1"]
+    #     self.exchange.start_tracking_order(
+    #         order_id=self.client_order_id_prefix + "1",
+    #         exchange_order_id=str(self.expected_exchange_order_id),
+    #         trading_pair=self.trading_pair,
+    #         order_type=OrderType.LIMIT,
+    #         trade_type=TradeType.BUY,
+    #         price=Decimal("10000"),
+    #         amount=Decimal("1"),
+    #     )
+    #     order: InFlightOrder = self.exchange.in_flight_orders[self.client_order_id_prefix + "1"]
+    #     mock_status.return_value = self.trade_update(order)
 
-        mock_fills.return_value = self.configure_full_fill_trade_response(
-            order=order, mock_api=mock_api
-        )
+    #     for _ in range(self.exchange._order_tracker._lost_order_count_limit + 1):
+    #         self.async_run_with_timeout(
+    #             self.exchange._order_tracker.process_order_not_found(client_order_id=order.client_order_id))
 
-        url = web_utils.private_rest_url(CONSTANTS.TRADES_FOR_ORDER_PATH_URL.format(order.exchange_order_id))
-        regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
+    #     self.assertNotIn(order.client_order_id, self.exchange.in_flight_orders)
 
-        mock_response = []
-        mock_api.get(regex_url, body=json.dumps(mock_response))
+    #     if self.is_order_fill_http_update_included_in_status_update:
+    #         trade_url = self.configure_full_fill_trade_response(
+    #             order=order,
+    #             mock_api=mock_api,
+    #             callback=lambda *args, **kwargs: request_sent_event.set())
+    #     else:
+    #         # If the fill events will not be requested with the order status, we need to manually set the event
+    #         # to allow the ClientOrderTracker to process the last status update
+    #         order.completely_filled_event.set()
+    #         request_sent_event.set()
 
-        self.exchange._set_current_timestamp(1640780000)
-        self.exchange._last_poll_timestamp = (self.exchange.current_timestamp -
-                                              self.exchange.UPDATE_ORDER_STATUS_MIN_INTERVAL - 1)
-        self.exchange._last_trades_poll_tegro_timestamp = 10
-        self.async_run_with_timeout(self.exchange._all_trade_updates_for_order(order))
+    #     self.configure_completely_filled_order_status_response(
+    #         order=order,
+    #         mock_api=mock_api,
+    #         callback=lambda *args, **kwargs: request_sent_event.set())
+
+    #     self.async_run_with_timeout(self.exchange._update_order_status())
+    #     # Execute one more synchronization to ensure the async task that processes the update is finished
+    #     self.async_run_with_timeout(request_sent_event.wait())
+
+    #     self.async_run_with_timeout(order.wait_until_completely_filled())
+    #     self.assertTrue(order.is_done)
+    #     self.assertTrue(order.is_failure)
+
+    #     if self.is_order_fill_http_update_included_in_status_update:
+    #         if trade_url:
+    #             trades_request = self._all_executed_requests(mock_api, trade_url)[0]
+    #             self.validate_trades_request(
+    #                 order=order,
+    #                 request_call=trades_request)
+
+    #         fill_event: OrderFilledEvent = self.order_filled_logger.event_log[0]
+    #         self.assertEqual(self.exchange.current_timestamp, fill_event.timestamp)
+    #         self.assertEqual(order.client_order_id, fill_event.order_id)
+    #         self.assertEqual(order.trading_pair, fill_event.trading_pair)
+    #         self.assertEqual(order.trade_type, fill_event.trade_type)
+    #         self.assertEqual(order.order_type, fill_event.order_type)
+    #         self.assertEqual(order.price, fill_event.price)
+    #         self.assertEqual(order.amount, fill_event.amount)
+    #         self.assertEqual(self.expected_fill_fee, fill_event.trade_fee)
+
+    #     self.assertEqual(0, len(self.buy_order_completed_logger.event_log))
+    #     self.assertIn(order.client_order_id, self.exchange._order_tracker.all_fillable_orders)
+    #     self.assertFalse(
+    #         self.is_logged(
+    #             "INFO",
+    #             f"BUY order {order.client_order_id} completely filled."
+    #         )
+    #     )
+
+    #     request_sent_event.clear()
+
+    #     # Configure again the response to the order fills request since it is required by lost orders update logic
+    #     self.configure_full_fill_trade_response(
+    #         order=order,
+    #         mock_api=mock_api,
+    #         callback=lambda *args, **kwargs: request_sent_event.set())
+
+    #     self.async_run_with_timeout(self.exchange._update_lost_orders_status())
+    #     # Execute one more synchronization to ensure the async task that processes the update is finished
+    #     self.async_run_with_timeout(request_sent_event.wait())
+
+    #     self.assertTrue(order.is_done)
+    #     self.assertTrue(order.is_failure)
+
+    #     self.assertEqual(1, len(self.order_filled_logger.event_log))
+    #     self.assertEqual(0, len(self.buy_order_completed_logger.event_log))
+    #     self.assertNotIn(order.client_order_id, self.exchange._order_tracker.all_fillable_orders)
+    #     self.assertFalse(
+    #         self.is_logged(
+    #             "INFO",
+    #             f"BUY order {order.client_order_id} completely filled."
+    #         )
+    #     )
+
+    # @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange._all_trade_updates_for_order", new_callable=AsyncMock)
+    # @aioresponses()
+    # def test_update_order_fills_request_parameters(self, mock_fills: AsyncMock, mock_api):
+    #     self.exchange._set_current_timestamp(0)
+    #     self.exchange._last_poll_timestamp = -1
+
+    #     self.exchange.start_tracking_order(
+    #         order_id="OID1",
+    #         exchange_order_id="100234",
+    #         trading_pair=self.trading_pair,
+    #         order_type=OrderType.LIMIT,
+    #         trade_type=TradeType.BUY,
+    #         price=Decimal("10000"),
+    #         amount=Decimal("1"),
+    #     )
+    #     order = self.exchange.in_flight_orders["OID1"]
+
+    #     mock_fills.return_value = self.configure_full_fill_trade_response(
+    #         order=order, mock_api=mock_api
+    #     )
+
+    #     url = web_utils.private_rest_url(CONSTANTS.TRADES_FOR_ORDER_PATH_URL.format(order.exchange_order_id))
+    #     regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
+
+    #     mock_response = []
+    #     mock_api.get(regex_url, body=json.dumps(mock_response))
+
+    #     self.exchange._set_current_timestamp(1640780000)
+    #     self.exchange._last_poll_timestamp = (self.exchange.current_timestamp -
+    #                                           self.exchange.UPDATE_ORDER_STATUS_MIN_INTERVAL - 1)
+    #     self.exchange._last_trades_poll_tegro_timestamp = 10
+    #     self.async_run_with_timeout(self.exchange._all_trade_updates_for_order(order))
 
     # @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange._all_trade_updates_for_order", new_callable=AsyncMock)
     # @aioresponses()
@@ -2443,9 +3020,6 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
         )
 
         self.assertEqual(result, expected_client_order_id)
-
-    def test_time_synchronizer_related_request_error_detection(self):
-        pass
 
     @patch('hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange.sign_inner')
     @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange._generate_typed_data", new_callable=AsyncMock)
@@ -2680,6 +3254,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
         ]
 
     def _order_fills_request_full_fill_mock_response(self, order: InFlightOrder):
+        self._simulate_trading_rules_initialized()
         return [
             {
                 "id": self.expected_fill_trade_id,

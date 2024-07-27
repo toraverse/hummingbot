@@ -452,6 +452,7 @@ class TegroExchange(ExchangePyBase):
         """
         user_channels = CONSTANTS.USER_METHODS
         async for event_message in self._iter_user_event_queue():
+            print(event_message)
             try:
                 channel: str = event_message.get("action", None)
                 results: Dict[str, Any] = event_message.get("data", {})
