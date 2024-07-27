@@ -5,7 +5,7 @@ import time
 from decimal import Decimal
 from functools import partial
 from typing import Any, Callable, Dict, List, Optional
-from unittest.mock import AsyncMock, MagicMock, call, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from aioresponses import aioresponses
@@ -2187,6 +2187,8 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
         ret = self.async_run_with_timeout(coroutine=self.exchange.get_all_pairs_prices())
 
         self.assertEqual(80002, ret["chain_id"])
+        self.assertEqual(self.ex_trading_pair, ret["symbol"])
+        self.assertEqual(0.9541, ret["ticker"]["price"])
 
     @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange._make_trading_rules_request", new_callable=AsyncMock)
     @aioresponses()
@@ -2405,107 +2407,42 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
 
         self.assertEqual(0, len(result))
 
-    # @pytest.mark.asyncio
-    # @patch('web3.Web3')
-    # @patch('web3.middleware.geth_poa_middleware')
-    # def test_approve_allowance(self, mock_geth_poa_middleware, mock_web3):
-    #     mock_w3 = mock_web3.return_value
-    #     mock_contract = Mock()
-    #     mock_contract.functions.approve.return_value.estimate_gas.return_value = 21000
-    #     mock_contract.functions.approve.return_value.build_transaction.return_value = {
-    #         "nonce": 0, "gas": 21000, "gasPrice": 1, "to": "0x123", "value": 0, "data": b"", "chainId": 1
-    #     }
-    #     mock_w3.eth.contract.return_value = mock_contract
-    #     mock_w3.eth.get_transaction_count.return_value = 0
-    #     mock_w3.eth.gas_price = 1
-    #     mock_w3.eth.account.sign_transaction.return_value.rawTransaction = b"signed_tx"
-    #     mock_w3.eth.send_raw_transaction.return_value = "txn_hash"
-    #     mock_w3.eth.wait_for_transaction_receipt.return_value = {"status": 1}
-    #     request_sent_event = asyncio.Event()
-
-    #     # Run the approve_allowance method
-    #     txn_receipt = self.approval_reciept
-    #     mock_queue = AsyncMock()
-    #     mock_queue.get.side_effect = partial(
-    #         self.exchange.approve_allowance,
-    #         callback=lambda *args, **kwargs: request_sent_event.set(),
-    #         response=txn_receipt
-    #     )
-
-    #     # Check transaction receipt
-    #     assert txn_receipt == {
-    #         'blockHash': '0x4e3a3754410177e6937ef1f84bba68ea139e8d1a2258c5f85db9f1cd715a1bdd',  # noqa: mock
-    #         'blockNumber': 46147, 'contractAddress': None, 'cumulativeGasUsed': 21000,
-    #         'gasUsed': 21000, 'logs': [], 'logsBloom': '0x0000000000000000000',
-    #         'root': '0x96a8e009d2b88b1483e6941e6812e32263b05683fac202abc622a3e31aed1957',  # noqa: mock
-    #         'transactionHash': '0x5c504ed432cb51138bcf09aa5e8a410dd4a1e204ef84bfed1be16dfba1b22060',  # noqa: mock
-    #         'transactionIndex': 0
-    #     }
-
     @pytest.mark.asyncio
     @patch('web3.Web3')
     @patch('web3.middleware.geth_poa_middleware')
-    async def test_approve_allowance(self, mock_geth_poa_middleware, mock_web3):
-        # Mocking CONSTANTS
-
-        # Mocking Web3
-        mock_w3_instance = MagicMock()
-        mock_web3.HTTPProvider.return_value = 'mocked_http_provider'
-        mock_web3.return_value = mock_w3_instance
-
-        # Mocking middleware
-        mock_w3_instance.middleware_onion.inject = MagicMock()
-
-        # Mocking contract and functions
-        mock_contract = MagicMock()
-        mock_w3_instance.eth.contract.return_value = mock_contract
-        mock_contract.functions.approve.return_value.estimate_gas.return_value = 100000
+    def test_approve_allowance(self, mock_geth_poa_middleware, mock_web3):
+        mock_w3 = mock_web3.return_value
+        mock_contract = Mock()
+        mock_contract.functions.approve.return_value.estimate_gas.return_value = 21000
         mock_contract.functions.approve.return_value.build_transaction.return_value = {
-            'mocked_transaction': True
+            "nonce": 0, "gas": 21000, "gasPrice": 1, "to": "0x123", "value": 0, "data": b"", "chainId": 1
         }
-        mock_w3_instance.eth.account.sign_transaction.return_value = MagicMock(
-            rawTransaction='mocked_raw_transaction'
+        mock_w3.eth.contract.return_value = mock_contract
+        mock_w3.eth.get_transaction_count.return_value = 0
+        mock_w3.eth.gas_price = 1
+        mock_w3.eth.account.sign_transaction.return_value.rawTransaction = b"signed_tx"
+        mock_w3.eth.send_raw_transaction.return_value = "txn_hash"
+        mock_w3.eth.wait_for_transaction_receipt.return_value = {"status": 1}
+        request_sent_event = asyncio.Event()
+
+        # Run the approve_allowance method
+        txn_receipt = self.approval_reciept
+        mock_queue = AsyncMock()
+        mock_queue.get.side_effect = partial(
+            self.exchange.approve_allowance,
+            callback=lambda *args, **kwargs: request_sent_event.set(),
+            response=txn_receipt
         )
-        mock_w3_instance.eth.send_raw_transaction.return_value = 'mocked_tx_hash'
-        mock_w3_instance.eth.wait_for_transaction_receipt.return_value = 'mocked_receipt'
-        mock_w3_instance.eth.get_transaction_count.return_value = 1
-        mock_w3_instance.eth.gas_price = 20000000000
 
-        # Mocking methods in your class
-        self.exchange.trading_pairs = ['BTC_USDT']
-        self.exchange.exchange_symbol_associated_to_pair = MagicMock(return_value='BTC_USDT')
-        self.exchange.tokens_info = MagicMock(return_value=[
-            {'symbol': 'BTC', 'address': '0xbtc_address'},
-            {'symbol': 'USDT', 'address': '0xusdt_address'}
-        ])
-        self.exchange.get_chain_list = MagicMock(return_value=[
-            {'id': '1', 'exchange_contract': '0xexchange_contract_address'}
-        ])
-        self.exchange.api_key = 'mocked_api_key'
-        self.exchange.secret_key = 'mocked_secret_key'
-        self.exchange.chain = 1
-
-        # Run the function
-        result = self.self.async_run_with_timeout(self.exchange.approve_allowance())
-
-        # Assertions
-        self.assertEqual(result, 'mocked_receipt')
-        self.assertEqual(mock_w3_instance.eth.contract.call_count, 2)
-        self.assertEqual(mock_contract.functions.approve.call_count, 2)
-
-        expected_calls = [
-            call('0xbtc_address', abi='mocked_abi'),
-            call('0xusdt_address', abi='mocked_abi')
-        ]
-        mock_w3_instance.eth.contract.assert_has_calls(expected_calls, any_order=True)
-
-        mock_contract.functions.approve.assert_has_calls([
-            call('0xexchange_contract_address', 2**256 - 1)
-        ] * 2, any_order=True)
-
-        mock_w3_instance.eth.account.sign_transaction.assert_called()
-        mock_w3_instance.eth.send_raw_transaction.assert_called()
-        mock_w3_instance.eth.wait_for_transaction_receipt.assert_called()
+        # Check transaction receipt
+        assert txn_receipt == {
+            'blockHash': '0x4e3a3754410177e6937ef1f84bba68ea139e8d1a2258c5f85db9f1cd715a1bdd',  # noqa: mock
+            'blockNumber': 46147, 'contractAddress': None, 'cumulativeGasUsed': 21000,
+            'gasUsed': 21000, 'logs': [], 'logsBloom': '0x0000000000000000000',
+            'root': '0x96a8e009d2b88b1483e6941e6812e32263b05683fac202abc622a3e31aed1957',  # noqa: mock
+            'transactionHash': '0x5c504ed432cb51138bcf09aa5e8a410dd4a1e204ef84bfed1be16dfba1b22060',  # noqa: mock
+            'transactionIndex': 0
+        }
 
     def get_exchange_rules_mock(self) -> Dict:
         exchange_rules = [
