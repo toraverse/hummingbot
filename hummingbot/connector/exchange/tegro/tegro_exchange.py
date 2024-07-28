@@ -46,11 +46,13 @@ class TegroExchange(ExchangePyBase):
                  client_config_map: "ClientConfigAdapter",
                  tegro_api_key: str,
                  tegro_api_secret: str,
+                 chain_name: CONSTANTS.DEFAULT_CHAIN,
                  trading_pairs: Optional[List[str]] = None,
                  trading_required: bool = True,
                  domain: str = CONSTANTS.DEFAULT_DOMAIN
                  ):
         self.api_key = tegro_api_key
+        self._chain = chain_name
         self.secret_key = tegro_api_secret
         self._api_factory = WebAssistantsFactory
         self._domain = domain
@@ -91,7 +93,7 @@ class TegroExchange(ExchangePyBase):
 
     @property
     def chain_id(self):
-        return self._domain.split("_")[1] if "testnet" in self._domain else self._domain
+        return self._chain
 
     @property
     def client_order_id_max_length(self):
@@ -99,9 +101,10 @@ class TegroExchange(ExchangePyBase):
 
     @property
     def chain(self):
+        chain = ""
         if self._domain == "tegro":
             # In this case tegro is default to base mainnet
-            chain = CONSTANTS.MAINNET_CHAIN_IDS[self._domain]
+            chain = CONSTANTS.MAINNET_CHAIN_IDS[self.chain_id]
         elif "testnet" in self._domain:
             chain = CONSTANTS.TESTNET_CHAIN_IDS[self.chain_id]
         return chain
@@ -639,6 +642,7 @@ class TegroExchange(ExchangePyBase):
                 signed_tx = w3.eth.account.sign_transaction(approval_contract, self.secret_key)
                 txn_hash = w3.eth.send_raw_transaction(signed_tx.rawTransaction)
                 reciept = w3.eth.wait_for_transaction_receipt(txn_hash)
+                print(f"Approved allowance for token {token} with transaction hash {txn_hash}")
                 receipts.append(reciept)
             except Exception as e:
                 # Log the error and continue with the next token

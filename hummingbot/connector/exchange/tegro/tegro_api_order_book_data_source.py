@@ -39,14 +39,13 @@ class TegroAPIOrderBookDataSource(OrderBookTrackerDataSource):
 
     @property
     def chain_id(self):
-        return self._domain.split("_")[1] if "testnet" in self._domain else self._domain
+        return self._connector._chain
 
     @property
     def chain(self):
-        chain = ""
         if self._domain == "tegro":
             # In this case tegro is default to base mainnet
-            chain = CONSTANTS.MAINNET_CHAIN_IDS[self._domain]
+            chain = CONSTANTS.MAINNET_CHAIN_IDS[self.chain_id]
         elif "testnet" in self._domain:
             chain = CONSTANTS.TESTNET_CHAIN_IDS[self.chain_id]
         return chain

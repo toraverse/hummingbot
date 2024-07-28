@@ -44,6 +44,7 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
         self.connector = TegroExchange(
             client_config_map=client_config_map,
             tegro_api_key="",
+            chain_name= "polygon",
             tegro_api_secret="",
             trading_pairs=[],
             trading_required=False,
