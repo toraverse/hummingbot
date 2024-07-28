@@ -92,6 +92,10 @@ class TegroExchange(ExchangePyBase):
         return self._domain
 
     @property
+    def node_rpc(self):
+        return f"tegro_{self._chain}_testnet" if "testnet" in self._domain else self._chain
+
+    @property
     def chain_id(self):
         return self._chain
 
@@ -608,7 +612,7 @@ class TegroExchange(ExchangePyBase):
             token_list = [token]
 
         # Setting up Web3
-        w3 = Web3(Web3.HTTPProvider(CONSTANTS.Node_URLS[self._domain]))
+        w3 = Web3(Web3.HTTPProvider(CONSTANTS.Node_URLS[self.node_rpc]))
         w3.middleware_onion.inject(geth_poa_middleware, layer=0)
         approve_abi = CONSTANTS.ABI["approve"]
 
