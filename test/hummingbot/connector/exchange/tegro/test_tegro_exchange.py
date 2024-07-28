@@ -2790,11 +2790,13 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
     def test_update_time_synchronizer_failure_is_logged(self, mock_api):
         return time.time()
 
+    # @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange._request_order_status", new_callable=AsyncMock)
     # @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange._all_trade_updates_for_order", new_callable=AsyncMock)
     # @aioresponses()
     # def test_lost_order_included_in_order_fills_update_and_not_in_order_status_update(
     #     self,
     #     mock_status: AsyncMock,
+    #     mock_trades: AsyncMock,
     #     mock_api
     # ):
     #     self.exchange._set_current_timestamp(1640780000)
@@ -2810,7 +2812,8 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
     #         amount=Decimal("1"),
     #     )
     #     order: InFlightOrder = self.exchange.in_flight_orders[self.client_order_id_prefix + "1"]
-    #     mock_status.return_value = self.trade_update(order)
+    #     mock_trades.return_value = self.trade_update(order)
+    #     mock_status.return_value = self._order_fills_request_full_fill_mock_response
 
     #     for _ in range(self.exchange._order_tracker._lost_order_count_limit + 1):
     #         self.async_run_with_timeout(

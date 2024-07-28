@@ -276,7 +276,7 @@ class TegroExchange(ExchangePyBase):
             is_server_overloaded = ("status is 503" in error_description
                                     and "Unknown error, please check your request or try again later." in error_description)
             if insufficient_allowance:
-                await self.approve_allowance()
+                await self.approve_allowance(token=symbol)
             if is_server_overloaded:
                 o_id = "Unknown"
                 transact_time = int(datetime.now(timezone.utc).timestamp() * 1e3)
@@ -578,7 +578,7 @@ class TegroExchange(ExchangePyBase):
 
     # === loops and sync related methods ===
     #
-    async def approve_allowance(self):
+    async def approve_allowance(self, token=None, fail_silently: bool = True):
         """
         Approves the allowance for a specific token on a decentralized exchange.
 
@@ -600,6 +600,10 @@ class TegroExchange(ExchangePyBase):
             token_list.append(base)
             token_list.append(quote)
 
+        # If a specific token is provided, use only that token
+        if token:
+            token_list = [token]
+
         # Setting up Web3
         w3 = Web3(Web3.HTTPProvider(CONSTANTS.Node_URLS[self._domain]))
         w3.middleware_onion.inject(geth_poa_middleware, layer=0)
@@ -608,47 +612,40 @@ class TegroExchange(ExchangePyBase):
         # Fetching token and chain information
         tokens = await self.tokens_info()
         chain_data = await self.get_chain_list()
-        for chain in chain_data:
-            if int(chain["id"]) == self.chain:
-                exchange_con_addr = chain["exchange_contract"]
-                break
-
+        exchange_con_addr = [chain["exchange_contract"] for chain in chain_data if int(chain["id"]) == self.chain][0]
+        receipts = []
         # Organizing token data
         for t in tokens:
             data[t["symbol"]] = {"address": t["address"]}
         # Loop through each token and approve allowance
-        for token in set(token_list):
+        for token in token_list:
             con_addr = Web3.to_checksum_address(data[token]["address"])
             addr = Web3.to_checksum_address(self.api_key)
             contract = w3.eth.contract(con_addr, abi=approve_abi)
-
             # Get nonce
             nonce = w3.eth.get_transaction_count(addr)
-
             # Prepare transaction parameters
             tx_params = {
-                "from": addr,
-                "nonce": nonce,
-                "gasPrice": w3.eth.gas_price,
+                "from": addr, "nonce": nonce, "gasPrice": w3.eth.gas_price,
             }
-
             try:
                 # Estimate gas for the approval transaction
                 gas_estimate = contract.functions.approve(exchange_con_addr, MAX_UINT256).estimate_gas({
-                    "from": addr,
-                })
+                    "from": addr, })
                 tx_params["gas"] = gas_estimate
 
                 # Building, signing, and sending the approval transaction
                 approval_contract = contract.functions.approve(exchange_con_addr, MAX_UINT256).build_transaction(tx_params)
                 signed_tx = w3.eth.account.sign_transaction(approval_contract, self.secret_key)
                 txn_hash = w3.eth.send_raw_transaction(signed_tx.rawTransaction)
-                return w3.eth.wait_for_transaction_receipt(txn_hash)
-
+                reciept = w3.eth.wait_for_transaction_receipt(txn_hash)
+                receipts.append(reciept)
             except Exception as e:
-                # Log the error and return None
-                self.logger().debug("Error occurred while approving allowance: %s", str(e))
-                return None
+                # Log the error and continue with the next token
+                self.logger().debug("Error occurred while approving allowance for token %s: %s", token, str(e))
+                if not fail_silently:
+                    raise e
+        return receipts if len(receipts) > 0 else None
 
     async def initialize_market_list(self):
         try:
