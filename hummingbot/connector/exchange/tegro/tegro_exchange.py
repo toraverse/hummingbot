@@ -751,14 +751,8 @@ class TegroExchange(ExchangePyBase):
             path_url=CONSTANTS.ACCOUNTS_PATH_URL.format(self.chain, self.api_key),
             limit_id=CONSTANTS.ACCOUNTS_PATH_URL,
             is_auth_required=False)
-
         data = []
         for dats in (account_info):
-            token_data = {
-                "symbol": dats["symbol"],
-                "address": dats["address"],
-                "type": dats["type"],
-                "decimal": dats["decimal"],
-            }
+            token_data = {"symbol": dats["symbol"], "address": dats["address"]}
             data.append(token_data)
         return data
