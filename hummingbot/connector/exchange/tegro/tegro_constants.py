@@ -54,7 +54,8 @@ SIDE_SELL = "sell"
 
 ORDER_STATE = {
     "open": OrderState.OPEN,
-    "closed": OrderState.FILLED,
+    "closed": OrderState.PENDING_CANCEL,
+    "completed": OrderState.FILLED,
     "cancelled": OrderState.CANCELED,
 }
 

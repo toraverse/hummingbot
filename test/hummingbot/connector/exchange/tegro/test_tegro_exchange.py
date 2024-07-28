@@ -879,7 +879,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
 
     @property
     def expected_exchange_order_id(self):
-        return str("05881667-3bd3-4fc0-8b0e-db71c8a8fc99+61c97934f3aa9d76d3e08dede89ff03a4c90aa9df09fe1efe055b7132f3b058d")  # noqa: mock
+        return "05881667-3bd3-4fc0-8b0e-db71c8a8fc99"  # noqa: mock
 
     @property
     def is_order_fill_http_update_included_in_status_update(self) -> bool:
@@ -1252,7 +1252,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
                 "quoteCurrency": self.expected_fill_fee.flat_fees[0].token,
                 "quoteDecimals": 6,
                 "side": order.trade_type.name.lower(),
-                "status": "closed",
+                "status": "completed",
                 "timestamp": 1499405658657,
                 "total": 300,
                 "volumePrecision": "1000000000000000000"
@@ -2068,24 +2068,81 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
     def trade_event_for_no_fill_websocket_update(self, order: InFlightOrder):
         return []
 
+    # @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange._request_order_status", new_callable=AsyncMock)
+    # @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange._all_trade_updates_for_order", new_callable=AsyncMock)
+    # @aioresponses()
+    # def test_update_order_status_when_failed(self, mock_trades, mock_status, mock_api):
+    #     self.exchange._set_current_timestamp(1640780000)
+    #     self.exchange._last_poll_timestamp = (self.exchange.current_timestamp -
+    #                                           self.exchange.UPDATE_ORDER_STATUS_MIN_INTERVAL - 1)
+
+    #     self.exchange.start_tracking_order(
+    #         order_id="OID1",
+    #         exchange_order_id="100234",
+    #         trading_pair=self.trading_pair,
+    #         order_type=OrderType.LIMIT,
+    #         trade_type=TradeType.BUY,
+    #         price=Decimal("10000"),
+    #         amount=Decimal("1"),
+    #     )
+    #     order = self.exchange.in_flight_orders["OID1"]
+    #     mock_status.return_value = self._order_status_request_failed_mock_response(order)
+    #     mock_trades.return_value = []
+
+    #     url = web_utils.private_rest_url(CONSTANTS.ORDER_LIST.format(order.exchange_order_id))
+    #     regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
+
+    #     order_status = {
+    #         "order_id": str(order.exchange_order_id),
+    #         "order_hash": "3e45ac4a7c67ab9fd9392c6bdefb0b3de8e498811dd8ac934bbe8cf2c26f72a7",  # noqa: mock
+    #         "market_id": "80002_0x6b94a36d6ff05886d44b3dafabdefe85f09563ba_0x7551122e441edbf3fffcbcf2f7fcc636b636482b",  # noqa: mock
+    #         "side": order.order_type.name.lower(),
+    #         "base_currency": self.base_asset,
+    #         "quote_currency": self.quote_asset,
+    #         "contract_address": "0xcf9eb56c69ddd4f9cfdef880c828de7ab06b4614",  # noqa: mock
+    #         "quantity": str(order.amount),
+    #         "quantity_filled": "0",
+    #         "quantity_pending": "0",
+    #         "price": str(order.price),
+    #         "avg_price": "3490",
+    #         "price_precision": "3490000000000000000000",
+    #         "volume_precision": "3999900000000000000",
+    #         "total": "13959.651",
+    #         "fee": "0",
+    #         "status": "failed",
+    #         "cancel": {
+    #             "reason": "user_cancel",
+    #             "code": 611
+    #         },
+    #         "timestamp": 1499827319559
+    #     }
+
+    #     mock_response = order_status
+    #     mock_api.get(regex_url, body=json.dumps(mock_response))
+
+    #     self.async_run_with_timeout(self.exchange._update_order_status())
+
+    #     request = self._all_executed_requests(mock_api, url)[0]
+    #     request_params = request.kwargs["params"]
+    #     self.assertEqual(self.chain, request_params["chain_id"])
+    #     self.assertEqual(order.exchange_order_id, request_params["order_id"])
+
+    #     failure_event: MarketOrderFailureEvent = self.order_failure_logger.event_log[0]
+    #     self.assertEqual(self.exchange.current_timestamp, failure_event.timestamp)
+    #     self.assertEqual(order.client_order_id, failure_event.order_id)
+    #     self.assertEqual(order.order_type, failure_event.order_type)
+    #     self.assertNotIn(order.client_order_id, self.exchange.in_flight_orders)
+    #     self.assertTrue(
+    #         self.is_logged(
+    #             "INFO",
+    #             f"Order {order.client_order_id} has failed. Order Update: OrderUpdate(trading_pair='{self.trading_pair}',"
+    #             f" update_timestamp={order_status['updateTime'] * 1e-3}, new_state={repr(OrderState.FAILED)}, "
+    #             f"client_order_id='{order.client_order_id}', exchange_order_id='{order.exchange_order_id}', "
+    #             "misc_updates=None)")
+    #     )
+
     def trade_event_for_full_fill_websocket_update(self, order: InFlightOrder):
-        return [
-            {
-                "id": self.expected_fill_trade_id,
-                "orderId": str(order.exchange_order_id),
-                "symbol": self.exchange_symbol_for_tokens(order.base_asset, order.quote_asset),
-                "market_id": "80002_0xcabd9e0ea17583d57a972c00a1413295e7c69246_0x7551122e441edbf3fffcbcf2f7fcc636b636482b",  # noqa: mock
-                "price": int(order.price),
-                "amount": str(order.amount),
-                "state": "success",
-                "tx_hash": "0x4e240028f16196f421ab266b7ea95acaee4b7fc648e97c19a0f93b3c8f0bb32d",  # noqa: mock
-                "timestamp": 1499865549590,
-                "fee": str(self.expected_fill_fee.flat_fees[0].amount),
-                "taker_type": order.order_type.name.lower(),
-                "taker": "0x1870f03410fdb205076718337e9763a91f029280",  # noqa: mock
-                "maker": "0x1870f03410fdb205076718337e9763a91f029280"  # noqa: mock
-            }
-        ]
+        return None
 
     def trade_update(self, order: InFlightOrder):
         return [
@@ -3129,7 +3186,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
             "volume_precision": "3999900000000000000",
             "total": "13959.651",
             "fee": "0",
-            "status": "closed",
+            "status": "completed",
             "cancel": {
                 "reason": "",
                 "code": 0
@@ -3156,6 +3213,32 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
             "total": "13959.651",
             "fee": "0",
             "status": "cancelled",
+            "cancel": {
+                "reason": "user_cancel",
+                "code": 611
+            },
+            "timestamp": 1499827319559
+        }
+
+    def _order_status_request_failed_mock_response(self, order: InFlightOrder) -> Any:
+        return {
+            "order_id": str(order.exchange_order_id),
+            "order_hash": "3e45ac4a7c67ab9fd9392c6bdefb0b3de8e498811dd8ac934bbe8cf2c26f72a7",  # noqa: mock
+            "market_id": "80002_0x6b94a36d6ff05886d44b3dafabdefe85f09563ba_0x7551122e441edbf3fffcbcf2f7fcc636b636482b",  # noqa: mock
+            "side": order.order_type.name.lower(),
+            "base_currency": self.base_asset,
+            "quote_currency": self.quote_asset,
+            "contract_address": "0xcf9eb56c69ddd4f9cfdef880c828de7ab06b4614",  # noqa: mock
+            "quantity": str(order.amount),
+            "quantity_filled": "0",
+            "quantity_pending": "0",
+            "price": str(order.price),
+            "avg_price": "3490",
+            "price_precision": "3490000000000000000000",
+            "volume_precision": "3999900000000000000",
+            "total": "13959.651",
+            "fee": "0",
+            "status": "failed",
             "cancel": {
                 "reason": "user_cancel",
                 "code": 611

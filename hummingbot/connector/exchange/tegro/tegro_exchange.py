@@ -291,7 +291,7 @@ class TegroExchange(ExchangePyBase):
             else:
                 raise
         else:
-            o_id = f"{data['order_id']}+{data['order_hash']}"
+            o_id = f"{data['order_id']}"
             transact_time = data["timestamp"] * 1e-3
         return o_id, transact_time
 
@@ -348,26 +348,15 @@ class TegroExchange(ExchangePyBase):
                 raise
 
     def sign_inner(self, data):
-        signature = None
-        if "Order" in data["sign_data"]["types"]:
-            domain_data = data["sign_data"]["domain"]
-            message_data = data["sign_data"]["message"]
-            message_types = {"Order": data["sign_data"]["types"]["Order"]}
+        message = "Order" if "Order" in data["sign_data"]["types"] else "CancelOrder"
+        domain_data = data["sign_data"]["domain"]
+        message_data = data["sign_data"]["message"]
+        message_types = {message: data["sign_data"]["types"][message]}
 
-            # encode and sign
-            structured_data = encode_typed_data(domain_data, message_types, message_data)
-            signed = self.wallet.sign_message(structured_data)
-            signature = signed.signature.hex()
-        else:
-            # datas to sign
-            domain_data = data["sign_data"]["domain"]
-            message_data = data["sign_data"]["message"]
-            message_types = {"CancelOrder": data["sign_data"]["types"]["CancelOrder"]}
-
-            # encode and sign
-            structured_data = encode_typed_data(domain_data, message_types, message_data)
-            signed = eth_account.Account.from_key(self.secret_key).sign_message(structured_data)
-            signature = signed.signature.hex()
+        # encode and sign
+        structured_data = encode_typed_data(domain_data, message_types, message_data)
+        signed = self.wallet.sign_message(structured_data)
+        signature = signed.signature.hex()
         return signature
 
     async def _place_cancel(self, order_id: str, tracked_order: InFlightOrder):
@@ -458,8 +447,6 @@ class TegroExchange(ExchangePyBase):
                     continue
                 elif channel == CONSTANTS.USER_METHODS["ORDER_SUBMITTED"]:
                     await self._process_order_message(results)
-                elif channel == CONSTANTS.USER_METHODS["ORDER_PLACED"]:
-                    await self._process_order_message(results)
                 elif channel == CONSTANTS.USER_METHODS["ORDER_TRADE_PROCESSED"]:
                     await self._process_order_message(results, fetch_trades = True)
 
@@ -476,12 +463,12 @@ class TegroExchange(ExchangePyBase):
             update_timestamp=order_status["timestamp"] * 1e-3,
             new_state=CONSTANTS.ORDER_STATE[order_status["status"]],
             client_order_id=order.client_order_id,
-            exchange_order_id=f"{str(order_status['order_id'])}+{order_status['order_hash']}",
+            exchange_order_id=f"{str(order_status['order_id'])}",
         )
         return order_update
 
     async def _process_order_message(self, raw_msg: Dict[str, Any], fetch_trades = False):
-        client_order_id = str(raw_msg.get("order_id", ""))
+        client_order_id = f"{raw_msg['order_id']}"
         tracked_order = self._order_tracker.all_fillable_orders_by_exchange_order_id.get(client_order_id)
         if not tracked_order:
             self.logger().debug(f"Ignoring order message with id {client_order_id}: not in in_flight_orders.")
