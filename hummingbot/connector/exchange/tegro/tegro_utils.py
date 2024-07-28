@@ -1,8 +1,6 @@
-from datetime import datetime
 from decimal import Decimal
 from typing import Any, Dict, Optional
 
-from dateutil.parser import parse as dateparse
 from pydantic import Field, SecretStr, validator
 
 from hummingbot.client.config.config_data_types import BaseConnectorConfigMap, ClientFieldData
@@ -59,19 +57,6 @@ def int_val_or_none(string_value: str,
             return int('0')
 
 
-def str_val_or_none(
-    string_value: str,
-    on_error_return_none: bool = True,
-) -> int:
-    try:
-        return str(string_value)
-    except Exception:
-        if on_error_return_none:
-            return None
-        else:
-            return int('0')
-
-
 def decimal_val_or_none(string_value: str,
                         on_error_return_none: bool = True,
                         ) -> Decimal:
@@ -82,23 +67,6 @@ def decimal_val_or_none(string_value: str,
             return None
         else:
             return Decimal('0')
-
-
-def datetime_val_or_now(string_value: str,
-                        string_format: str = '%Y-%m-%dT%H:%M:%S.%fZ',
-                        on_error_return_now: bool = True,
-                        ) -> datetime:
-    try:
-        return datetime.strptime(string_value, string_format)
-    except Exception:
-        if on_error_return_now:
-            return datetime.now()
-        else:
-            return None
-
-
-def str_date_to_ts(date: str) -> int:
-    return int(dateparse(date).timestamp())
 
 
 class TegroConfigMap(BaseConnectorConfigMap):

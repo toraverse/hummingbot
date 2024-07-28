@@ -1174,7 +1174,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
             callback: Optional[Callable] = lambda *args, **kwargs: None) -> str:
         url = web_utils.public_rest_url(path_url=CONSTANTS.TRADES_FOR_ORDER_PATH_URL.format(order.exchange_order_id))
         regex_url = re.compile(url + r"\?.*")
-        response = self._order_fills_request_full_fill_mock_response(order=order)
+        response = self.trade_update(order=order)
         mock_api.get(regex_url, body=json.dumps(response), callback=callback)
         return response
 
@@ -1989,8 +1989,12 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
     # @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange._all_trade_updates_for_order", new_callable=AsyncMock)
     # @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange._request_order_status", new_callable=AsyncMock)
     # @aioresponses()
-    # def test_update_order_status_when_filled(self, mock_status: AsyncMock, mock_trades: AsyncMock, mock_api):
-
+    # def test_update_order_status_when_filled(
+    #     self,
+    #     mock_status: AsyncMock,
+    #     mock_trades: AsyncMock,
+    #     mock_api
+    # ):
     #     self.exchange._set_current_timestamp(1640780000)
     #     request_sent_event = asyncio.Event()
 
@@ -2004,56 +2008,26 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
     #         amount=Decimal("1"),
     #     )
     #     order: InFlightOrder = self.exchange.in_flight_orders[self.client_order_id_prefix + "1"]
+
     #     mock_status.return_value = self._order_status_request_completely_filled_mock_response(order=order)
     #     mock_trades.return_value = self.trade_update(order)
 
-    #     if self.is_order_fill_http_update_included_in_status_update:
-    #         trade_url = self.configure_full_fill_trade_response(
-    #             order=order,
-    #             mock_api=mock_api,
-    #             callback=lambda *args, **kwargs: request_sent_event.set())
-    #     else:
-    #         # If the fill events will not be requested with the order status, we need to manually set the event
-    #         # to allow the ClientOrderTracker to process the last status update
-    #         order.completely_filled_event.set()
+    #     matches_url = web_utils.public_rest_url(CONSTANTS.TRADES_FOR_ORDER_PATH_URL.format(order.exchange_order_id), domain=self.domain)
+    #     matches_response = self.trade_update(order)
+    #     mock_api.post(matches_url, body=json.dumps(matches_response))
 
-    #     urls = self.configure_completely_filled_order_status_response(
-    #         order=order,
-    #         mock_api=mock_api,
-    #         callback=lambda *args, **kwargs: request_sent_event.set())
+    #     orders_url = web_utils.public_rest_url(CONSTANTS.TEGRO_USER_ORDER_PATH_URL.format(self.tegro_api_key), domain=self.domain)
+    #     orders_response = self._order_status_request_completely_filled_mock_response(order=order)
+    #     mock_api.get(orders_url, body=json.dumps(orders_response))
 
     #     self.async_run_with_timeout(self.exchange._update_order_status())
     #     # Execute one more synchronization to ensure the async task that processes the update is finished
     #     self.async_run_with_timeout(request_sent_event.wait())
 
-    #     for url in (urls if isinstance(urls, list) else [urls]):
-    #         order_status_request = self._all_executed_requests(mock_api, url)[0]
-    #         self.validate_order_status_request(
-    #             order=order,
-    #             request_call=order_status_request)
-
     #     self.async_run_with_timeout(order.wait_until_completely_filled())
     #     self.assertTrue(order.is_done)
 
-    #     if self.is_order_fill_http_update_included_in_status_update:
-    #         self.assertTrue(order.is_filled)
-    #         if trade_url:
-    #             trades_request = self._all_executed_requests(mock_api, trade_url)[0]
-    #             self.validate_trades_request(
-    #                 order=order,
-    #                 request_call=trades_request)
-
-    #         fill_event: OrderFilledEvent = self.order_filled_logger.event_log[0]
-    #         self.assertEqual(self.exchange.current_timestamp, fill_event.timestamp)
-    #         self.assertEqual(order.client_order_id, fill_event.order_id)
-    #         self.assertEqual(order.trading_pair, fill_event.trading_pair)
-    #         self.assertEqual(order.trade_type, fill_event.trade_type)
-    #         self.assertEqual(order.order_type, fill_event.order_type)
-    #         self.assertEqual(order.price, fill_event.price)
-    #         self.assertEqual(order.amount, fill_event.amount)
-    #         self.assertEqual(self.expected_fill_fee, fill_event.trade_fee)
-
-    #     buy_event: BuyOrderCompletedEvent = self.buy_order_completed_logger.event_log[0]
+    #     buy_event: BuyOrderCompletedEvent = self.buy_order_completed_logger.event_log[0]  # noqa: F821
     #     self.assertEqual(self.exchange.current_timestamp, buy_event.timestamp)
     #     self.assertEqual(order.client_order_id, buy_event.order_id)
     #     self.assertEqual(order.base_asset, buy_event.base_asset)
@@ -2117,10 +2091,9 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
         return [
             {
                 "id": self.expected_fill_trade_id,
-                "orderId": str(order.exchange_order_id),
-                "symbol": self.exchange_symbol_for_tokens(order.base_asset, order.quote_asset),
+                "symbol": self.exchange_symbol_for_tokens(order.base_asset, self.expected_fill_fee.flat_fees[0].token),
                 "market_id": "80002_0xcabd9e0ea17583d57a972c00a1413295e7c69246_0x7551122e441edbf3fffcbcf2f7fcc636b636482b",  # noqa: mock
-                "price": int(order.price),
+                "price": str(order.price),
                 "amount": str(order.amount),
                 "state": "success",
                 "tx_hash": "0x4e240028f16196f421ab266b7ea95acaee4b7fc648e97c19a0f93b3c8f0bb32d",  # noqa: mock
@@ -2132,10 +2105,9 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
             },
             {
                 "id": self.expected_fill_trade_id,
-                "orderId": str(order.exchange_order_id),
-                "symbol": self.exchange_symbol_for_tokens(order.base_asset, order.quote_asset),
+                "symbol": self.exchange_symbol_for_tokens(order.base_asset, self.expected_fill_fee.flat_fees[0].token),
                 "market_id": "80002_0xcabd9e0ea17583d57a972c00a1413295e7c69246_0x7551122e441edbf3fffcbcf2f7fcc636b636482b",  # noqa: mock
-                "price": int(order.price),
+                "price": str(order.price),
                 "amount": str(order.amount),
                 "state": "success",
                 "tx_hash": "0x4e240028f16196f421ab266b7ea95acaee4b7fc648e97c19a0f93b3c8f0bb32d",  # noqa: mock
@@ -3136,20 +3108,20 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
 
     def _order_cancelation_request_successful_mock_response(self, order: InFlightOrder) -> Any:
         return {
-            "cancelled_order_ids": [str(order.exchange_order_id)],
+            "cancelled_order_ids": [order.exchange_order_id],
         }
 
     def _order_status_request_completely_filled_mock_response(self, order: InFlightOrder) -> Any:
         return {
-            "order_id": str(order.exchange_order_id),
+            "order_id": order.exchange_order_id,
             "order_hash": "3e45ac4a7c67ab9fd9392c6bdefb0b3de8e498811dd8ac934bbe8cf2c26f72a7",  # noqa: mock
             "market_id": "80002_0x6b94a36d6ff05886d44b3dafabdefe85f09563ba_0x7551122e441edbf3fffcbcf2f7fcc636b636482b",  # noqa: mock
-            "side": order.order_type.name.lower(),
+            "side": "buy",
             "base_currency": self.base_asset,
             "quote_currency": self.quote_asset,
             "contract_address": "0xcf9eb56c69ddd4f9cfdef880c828de7ab06b4614",  # noqa: mock
             "quantity": str(order.amount),
-            "quantity_filled": "0",
+            "quantity_filled": str(order.amount),
             "quantity_pending": "0",
             "price": str(order.price),
             "avg_price": "3490",
