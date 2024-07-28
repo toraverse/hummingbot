@@ -46,7 +46,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
         cls.trading_pair = f"{cls.base_asset}-{cls.quote_asset}"
         cls.ex_trading_pair = f"{cls.base_asset}_{cls.quote_asset}"
         cls.chain_id = "polygon"
-        cls.domain = "tegro_optimism_testnet"  # noqa: mock
+        cls.domain = "tegro_testnet"  # noqa: mock
         cls.chain = 80002
         cls.rpc_url = "http://mock-rpc-url"  # noqa: mock
         cls.market_id = "80002_0x6b94a36d6ff05886d44b3dafabdefe85f09563ba_0x7551122e441edbf3fffcbcf2f7fcc636b636482b"  # noqa: mock
@@ -62,8 +62,9 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
             client_config_map=self.client_config_map,
             tegro_api_key=self.tegro_api_key,  # noqa: mock
             tegro_api_secret=self.tegro_api_secret,  # noqa: mock
+            chain_name=self.chain_id,
             trading_pairs=[self.trading_pair],
-            domain=CONSTANTS.DEFAULT_DOMAIN
+            domain=CONSTANTS.DEFAULT_DOMAIN,
         )
 
         self.exchange.logger().setLevel(1)
@@ -397,7 +398,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
                 }
             }
         ]
-        return "INVALID-PAIR", response
+        return response
 
     @property
     def network_status_request_successful_mock_response(self):
@@ -915,6 +916,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
             client_config_map=client_config_map,
             tegro_api_key=self.tegro_api_key,  # noqa: mock
             tegro_api_secret=self.tegro_api_secret,  # noqa: mock
+            chain_name=self.chain_id,
             trading_pairs=[self.trading_pair],
             domain=CONSTANTS.DEFAULT_DOMAIN
         )

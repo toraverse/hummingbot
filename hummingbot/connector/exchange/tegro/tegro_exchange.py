@@ -106,11 +106,12 @@ class TegroExchange(ExchangePyBase):
     @property
     def chain(self):
         chain = ""
-        if self._domain == "tegro":
-            # In this case tegro is default to base mainnet
-            chain = CONSTANTS.MAINNET_CHAIN_IDS[self.chain_id]
-        elif "testnet" in self._domain:
+        if "testnet" in self._domain:
             chain = CONSTANTS.TESTNET_CHAIN_IDS[self.chain_id]
+        elif self._domain == "tegro":
+            chain_id = CONSTANTS.DEFAULT_CHAIN
+            # In this case tegro is default to base mainnet
+            chain = CONSTANTS.MAINNET_CHAIN_IDS[chain_id]
         return chain
 
     @property
