@@ -460,13 +460,13 @@ class TegroExchange(ExchangePyBase):
     def _create_order_update_with_order_status_data(self, order_status: Dict[str, Any], order: InFlightOrder):
         state = order_status["status"]
         new_states = ""
-        if state == "closed" and Decimal(order_status["quantity_pending"]) == Decimal(0):
+        if state == "closed" and Decimal(order_status["quantity_pending"]) == Decimal("0"):
             new_states = "completed"
-        elif state == "open" and Decimal(order_status["quantity_filled"]) > Decimal(0):
-            new_states = "partial"
-        elif state == "open" and Decimal(order_status["quantity_filled"]) == Decimal(0):
+        elif state == "open" and Decimal(order_status["quantity_filled"]) < Decimal("0"):
             new_states = "open"
-        elif state == "closed" and Decimal(order_status["quantity_pending"]) != Decimal(0):
+        elif state == "open" and Decimal(order_status["quantity_filled"]) > Decimal("0"):
+            new_states = "partial"
+        elif state == "closed" and Decimal(order_status["quantity_pending"]) > Decimal("0"):
             new_states = "pending"
         elif state == "canceled" and order_status["cancel"]["code"] == 611:
             new_states = "canceled"
@@ -546,13 +546,13 @@ class TegroExchange(ExchangePyBase):
             is_auth_required=False)
         new_states = ""
         state = updated_order_data[0]["status"]
-        if state == "closed" and Decimal(updated_order_data[0]["quantity_pending"]) == Decimal(0):
+        if state == "closed" and Decimal(updated_order_data[0]["quantity_pending"]) == Decimal("0"):
             new_states = "completed"
-        elif state == "open" and Decimal(updated_order_data[0]["quantity_filled"]) == Decimal(0):
+        elif state == "open" and Decimal(updated_order_data[0]["quantity_filled"]) < Decimal("0"):
             new_states = "open"
-        elif state == "open" and Decimal(updated_order_data[0]["quantity_filled"]) > Decimal(0):
+        elif state == "open" and Decimal(updated_order_data[0]["quantity_filled"]) > Decimal("0"):
             new_states = "partial"
-        elif state == "closed" and Decimal(updated_order_data[0]["quantity_pending"]) == Decimal(0):
+        elif state == "closed" and Decimal(updated_order_data[0]["quantity_pending"]) > Decimal("0"):
             new_states = "pending"
         elif state == "canceled" and updated_order_data[0]["cancel"]["code"] == 611:
             new_states = "canceled"
