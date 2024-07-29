@@ -458,6 +458,7 @@ class TegroExchange(ExchangePyBase):
                 await self._sleep(5.0)
 
     def _create_order_update_with_order_status_data(self, order_status: Dict[str, Any], order: InFlightOrder):
+        new_state = ""
         state = CONSTANTS.ORDER_STATE[order_status["status"]]
         if state == "closed" and order_status["quantity_filled"] > 0:
             new_state = "completed"
@@ -542,6 +543,7 @@ class TegroExchange(ExchangePyBase):
             },
             limit_id=CONSTANTS.TEGRO_USER_ORDER_PATH_URL,
             is_auth_required=False)
+        new_state = ""
         state = CONSTANTS.ORDER_STATE[updated_order_data[0]["status"]]
         if state == "closed" and updated_order_data[0]["quantity_filled"] > 0:
             new_state = "completed"
