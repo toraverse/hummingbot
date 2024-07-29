@@ -2109,10 +2109,10 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
     #         "volume_precision": "3999900000000000000",
     #         "total": "13959.651",
     #         "fee": "0",
-    #         "status": "failed",
+    #         "status": "cancelled",
     #         "cancel": {
-    #             "reason": "user_cancel",
-    #             "code": 611
+    #             "reason": "Auto Cancel due to min match",
+    #             "code": 711
     #         },
     #         "timestamp": 1499827319559
     #     }

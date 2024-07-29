@@ -458,10 +458,25 @@ class TegroExchange(ExchangePyBase):
                 await self._sleep(5.0)
 
     def _create_order_update_with_order_status_data(self, order_status: Dict[str, Any], order: InFlightOrder):
+        state = CONSTANTS.ORDER_STATE[order_status["status"]]
+        if state == "closed" and order_status["quantity_filled"] > 0:
+            new_state = "completed"
+        elif state == "open" and order_status["quantity_filled"] > 0:
+            new_state = "partial"
+        elif state == "closed" and order_status["quantity_filled"] == 0:
+            new_state = "pending"
+        elif state == "cancelled":
+            code = order_status["cancel"]["code"]
+            if code in ["711", "712", "811"]:
+                new_state = "failed"
+            else:
+                new_state = "cancelled"
+        else:
+            new_state = state
         order_update = OrderUpdate(
             trading_pair=order.trading_pair,
             update_timestamp=order_status["timestamp"] * 1e-3,
-            new_state=CONSTANTS.ORDER_STATE[order_status["status"]],
+            new_state=new_state,
             client_order_id=order.client_order_id,
             exchange_order_id=f"{str(order_status['order_id'])}",
         )
@@ -527,12 +542,27 @@ class TegroExchange(ExchangePyBase):
             },
             limit_id=CONSTANTS.TEGRO_USER_ORDER_PATH_URL,
             is_auth_required=False)
+        state = CONSTANTS.ORDER_STATE[updated_order_data[0]["status"]]
+        if state == "closed" and updated_order_data[0]["quantity_filled"] > 0:
+            new_state = "completed"
+        elif state == "open" and updated_order_data[0]["quantity_filled"] > 0:
+            new_state = "partial"
+        elif state == "closed" and updated_order_data[0]["quantity_filled"] == 0:
+            new_state = "pending"
+        elif state == "cancelled":
+            code = updated_order_data[0]["cancel"]["code"]
+            if code in ["711", "712", "811"]:
+                new_state = "failed"
+            else:
+                new_state = "cancelled"
+        else:
+            new_state = state
         order_update = OrderUpdate(
             client_order_id=tracked_order.client_order_id,
             exchange_order_id=tracked_order.exchange_order_id,
             trading_pair=tracked_order.trading_pair,
             update_timestamp=updated_order_data[0]["timestamp"] * 1e-3,
-            new_state=CONSTANTS.ORDER_STATE[updated_order_data[0]["status"]],
+            new_state=new_state,
         )
 
         return order_update

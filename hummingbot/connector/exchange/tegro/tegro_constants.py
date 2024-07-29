@@ -54,9 +54,11 @@ SIDE_SELL = "sell"
 
 ORDER_STATE = {
     "open": OrderState.OPEN,
-    "closed": OrderState.PENDING_CANCEL,
+    "partial": OrderState.PARTIALLY_FILLED,
+    "pending": OrderState.PENDING_CANCEL,
     "completed": OrderState.FILLED,
     "cancelled": OrderState.CANCELED,
+    "failed": OrderState.FAILED,
 }
 
 MAINNET_CHAIN_IDS = {
