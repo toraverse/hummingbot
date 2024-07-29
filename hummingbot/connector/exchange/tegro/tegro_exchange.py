@@ -470,8 +470,7 @@ class TegroExchange(ExchangePyBase):
             new_states = "pending"
         elif state == "canceled" and order_status["cancel"]["code"] == 611:
             new_states = "canceled"
-        elif state == "canceled" and order_status["cancel"]["code"] in [711, 712, 811]:
-            new_states = "failed"
+
         else:
             new_states = order_status["status"]
         confirmed_state = CONSTANTS.ORDER_STATE[new_states]
