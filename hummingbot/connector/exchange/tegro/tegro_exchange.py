@@ -458,23 +458,23 @@ class TegroExchange(ExchangePyBase):
                 await self._sleep(5.0)
 
     def _create_order_update_with_order_status_data(self, order_status: Dict[str, Any], order: InFlightOrder):
-        new_state = ""
         state = order_status["status"]
-        if state == "closed" and order_status["quantity_filled"] > 0:
-            new_state = "completed"
-        elif state == "open" and order_status["quantity_filled"] > 0:
-            new_state = "partial"
-        elif state == "closed" and order_status["quantity_filled"] == 0:
-            new_state = "pending"
-        elif state == "cancelled":
-            code = order_status["cancel"]["code"]
-            if code in ["711", "712", "811"]:
-                new_state = "failed"
-            else:
-                new_state = "cancelled"
+        new_states = ""
+        if state == "closed" and Decimal(order_status["quantity_filled"]) > Decimal(0):
+            new_states = "completed"
+        elif state == "open" and Decimal(order_status["quantity_filled"]) > Decimal(0):
+            new_states = "partial"
+        elif state == "open" and Decimal(order_status["quantity_filled"]) > Decimal(0):
+            new_states = "open"
+        elif state == "closed" and Decimal(order_status["quantity_filled"]) == Decimal(0):
+            new_states = "pending"
+        elif state == "canceled" and order_status["cancel"]["code"] == 611:
+            new_states = "canceled"
+        elif state == "canceled" and order_status["cancel"]["code"] in [711, 712, 811]:
+            new_states = "failed"
         else:
-            new_state = state
-        confirmed_state = CONSTANTS.ORDER_STATE[order_status[new_state]]
+            new_states = state
+        confirmed_state = CONSTANTS.ORDER_STATE[new_states]
         order_update = OrderUpdate(
             trading_pair=order.trading_pair,
             update_timestamp=order_status["timestamp"] * 1e-3,
@@ -544,23 +544,23 @@ class TegroExchange(ExchangePyBase):
             },
             limit_id=CONSTANTS.TEGRO_USER_ORDER_PATH_URL,
             is_auth_required=False)
-        new_state = ""
+        new_states = ""
         state = updated_order_data["status"]
-        if state == "closed" and updated_order_data["quantity_filled"] > 0:
-            new_state = "completed"
-        elif state == "open" and updated_order_data["quantity_filled"] > 0:
-            new_state = "partial"
-        elif state == "closed" and updated_order_data["quantity_filled"] == 0:
-            new_state = "pending"
-        elif state == "cancelled":
-            code = updated_order_data["cancel"]["code"]
-            if code in ["711", "712", "811"]:
-                new_state = "failed"
-            else:
-                new_state = "cancelled"
+        if state == "closed" and Decimal(updated_order_data[0]["quantity_filled"]) > Decimal(0):
+            new_states = "completed"
+        elif state == "open" and Decimal(updated_order_data[0]["quantity_filled"]) == Decimal(0):
+            new_states = "open"
+        elif state == "open" and Decimal(updated_order_data[0]["quantity_filled"]) > Decimal(0):
+            new_states = "partial"
+        elif state == "closed" and Decimal(updated_order_data[0]["quantity_filled"]) == Decimal(0):
+            new_states = "pending"
+        elif state == "canceled" and updated_order_data[0]["cancel"]["code"] == 611:
+            new_states = "canceled"
+        elif state == "canceled" and updated_order_data[0]["cancel"]["code"] in [711, 712, 811]:
+            new_states = "failed"
         else:
-            new_state = state
-        confirmed_state = CONSTANTS.ORDER_STATE[updated_order_data[new_state]]
+            new_states = state
+        confirmed_state = CONSTANTS.ORDER_STATE[new_states]
         order_update = OrderUpdate(
             client_order_id=tracked_order.client_order_id,
             exchange_order_id=tracked_order.exchange_order_id,

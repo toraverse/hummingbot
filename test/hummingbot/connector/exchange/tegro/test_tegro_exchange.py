@@ -796,7 +796,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
             "quoteDecimals": 6,
             "contractAddress": "0x6b94a36d6ff05886d44b3dafabdefe85f09563ba",  # noqa: mock
             "quantity": 0.009945,
-            "quantityFilled": 0,
+            "quantity_filled": 0,
             "price": 2010.96,
             "avgPrice": 0,
             "pricePrecision": "2010960000",
@@ -1194,7 +1194,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
                 "price": str(order.price),
                 "pricePrecision": "300000000",
                 "quantity": str(order.amount),
-                "quantityFilled": 0,
+                "quantity_filled": 0,
                 "quoteCurrency": self.quote_asset,
                 "quoteDecimals": 6,
                 "side": order.trade_type.name.lower(),
@@ -1221,11 +1221,15 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
                 "price": str(order.price),
                 "pricePrecision": "300000000",
                 "quantity": str(order.amount),
-                "quantityFilled": 0,
-                "quoteCurrency": "alpha",
+                "quantity_filled": 0,
+                "quoteCurrency": self.quote_asset,
                 "quoteDecimals": 6,
                 "side": order.trade_type.name.lower(),
-                "status": "cancelled",
+                "status": "canceled",
+                "cancel": {
+                    "reason": "user_cancel",
+                    "code": 611
+                },
                 "timestamp": 1499405658657,
                 "total": 300,
                 "volumePrecision": "1000000000000000000"
@@ -1248,7 +1252,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
                 "price": str(order.price),
                 "pricePrecision": "300000000",
                 "quantity": str(order.amount),
-                "quantityFilled": self.expected_fill_fee.flat_fees[0].token,
+                "quantity_filled": self.expected_fill_fee.flat_fees[0].token,
                 "quoteCurrency": self.expected_fill_fee.flat_fees[0].token,
                 "quoteDecimals": 6,
                 "side": order.trade_type.name.lower(),
@@ -1376,7 +1380,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
     #         "volume_precision": "3999900000000000000",
     #         "total": "13959.651",
     #         "fee": "0",
-    #         "status": "cancelled",
+    #         "status": "canceled",
     #         "cancel": {
     #             "reason": "user_cancel",
     #             "code": 0
@@ -2109,7 +2113,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
     #         "volume_precision": "3999900000000000000",
     #         "total": "13959.651",
     #         "fee": "0",
-    #         "status": "cancelled",
+    #         "status": "canceled",
     #         "cancel": {
     #             "reason": "Auto Cancel due to min match",
     #             "code": 711
@@ -3212,7 +3216,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
             "volume_precision": "3999900000000000000",
             "total": "13959.651",
             "fee": "0",
-            "status": "cancelled",
+            "status": "canceled",
             "cancel": {
                 "reason": "user_cancel",
                 "code": 611
@@ -3238,10 +3242,10 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
             "volume_precision": "3999900000000000000",
             "total": "13959.651",
             "fee": "0",
-            "status": "failed",
+            "status": "canceled",
             "cancel": {
                 "reason": "user_cancel",
-                "code": 611
+                "code": 711
             },
             "timestamp": 1499827319559
         }
@@ -3256,7 +3260,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
             "quote_currency": self.quote_asset,
             "contract_address": "0xcf9eb56c69ddd4f9cfdef880c828de7ab06b4614",  # noqa: mock
             "quantity": str(order.amount),
-            "quantity_filled": "0",
+            "quantity_filled": "5",
             "quantity_pending": "0",
             "price": str(order.price),
             "avg_price": "3490",
@@ -3282,7 +3286,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
             "quote_currency": self.quote_asset,
             "contract_address": "0xcf9eb56c69ddd4f9cfdef880c828de7ab06b4614",  # noqa: mock
             "quantity": str(order.amount),
-            "quantity_filled": "0",
+            "quantity_filled": "5",
             "quantity_pending": "0",
             "price": str(order.price),
             "avg_price": "3490",
