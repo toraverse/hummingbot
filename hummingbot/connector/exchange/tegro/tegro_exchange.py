@@ -473,7 +473,7 @@ class TegroExchange(ExchangePyBase):
         elif state == "canceled" and order_status["cancel"]["code"] in [711, 712, 811]:
             new_states = "failed"
         else:
-            new_states = state
+            new_states = order_status["status"]
         confirmed_state = CONSTANTS.ORDER_STATE[new_states]
         order_update = OrderUpdate(
             trading_pair=order.trading_pair,
@@ -545,7 +545,7 @@ class TegroExchange(ExchangePyBase):
             limit_id=CONSTANTS.TEGRO_USER_ORDER_PATH_URL,
             is_auth_required=False)
         new_states = ""
-        state = updated_order_data["status"]
+        state = updated_order_data[0]["status"]
         if state == "closed" and Decimal(updated_order_data[0]["quantity_filled"]) > Decimal(0):
             new_states = "completed"
         elif state == "open" and Decimal(updated_order_data[0]["quantity_filled"]) == Decimal(0):
@@ -559,7 +559,7 @@ class TegroExchange(ExchangePyBase):
         elif state == "canceled" and updated_order_data[0]["cancel"]["code"] in [711, 712, 811]:
             new_states = "failed"
         else:
-            new_states = state
+            new_states = updated_order_data[0]["status"]
         confirmed_state = CONSTANTS.ORDER_STATE[new_states]
         order_update = OrderUpdate(
             client_order_id=tracked_order.client_order_id,
