@@ -267,58 +267,6 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
         ]
         return mock_response
 
-    def get_last_traded_prices_rest_msg(self):
-        return [
-            {
-                "id": "80002_0x6b94a36d6ff05886d44b3dafabdefe85f09563ba_0x7551122e441edbf3fffcbcf2f7fcc636b636482b",  # noqa: mock
-                "base_contract_address": "0x6b94a36d6ff05886d44b3dafabdefe85f09563ba",  # noqa: mock
-                "quote_contract_address": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",  # noqa: mock
-                "chain_id": 80002,
-                "symbol": f"{self.base_asset}_{self.quote_asset}",
-                "state": "verified",
-                "base_symbol": self.base_asset,
-                "quote_symbol": self.quote_asset,
-                "base_decimal": 18,
-                "quote_decimal": 6,
-                "base_precision": 6,
-                "quote_precision": 10,
-                "ticker": {
-                    "base_volume": 265306,
-                    "quote_volume": 1423455.3812000754,
-                    "price": self.expected_latest_price,
-                    "price_change_24h": -85.61,
-                    "price_high_24h": 10,
-                    "price_low_24h": 0.2806,
-                    "ask_low": 0.2806,
-                    "bid_high": 10
-                }
-            },
-            {
-                "id": "80002_0x6b94a36d6ff05886d44b3dafabdefe85f09563ba_0x7551122e441edbf3fffcbcf2f7fcc636b636482b",  # noqa: mock
-                "base_contract_address": "0x6b94a36d6ff05886d44b3dafabdefe85f09563ba",  # noqa: mock
-                "quote_contract_address": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",  # noqa: mock
-                "chain_id": 80002,
-                "symbol": "SOME_PAIR",
-                "state": "verified",
-                "base_symbol": "SOME",
-                "quote_symbol": "PAIR",
-                "base_decimal": 18,
-                "quote_decimal": 6,
-                "base_precision": 6,
-                "quote_precision": 10,
-                "ticker": {
-                    "base_volume": 265306,
-                    "quote_volume": 1423455.3812000754,
-                    "price": 0.9541,
-                    "price_change_24h": -85.61,
-                    "price_high_24h": 10,
-                    "price_low_24h": 0.2806,
-                    "ask_low": 0.2806,
-                    "bid_high": 10
-                }
-            }
-        ]
-
     @property
     def latest_prices_request_mock_response(self):
         return {
@@ -972,17 +920,11 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
             order: InFlightOrder,
             mock_api: aioresponses,
             callback: Optional[Callable] = lambda *args, **kwargs: None) -> str:
-        url = web_utils.private_rest_url(CONSTANTS.CANCEL_ORDER_URL)
+        url = web_utils.public_rest_url(CONSTANTS.CANCEL_ORDER_URL)
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
         response = self._order_cancelation_request_successful_mock_response(order=order)
         mock_api.post(regex_url, body=json.dumps(response), callback=callback)
         return url
-
-    # def configure_successful_creation_order_status_response(
-    #         self,
-    #         callback: Optional[Callable] = lambda *args, **kwargs: None) -> str:
-    #     response = self.order_creation_request_successful_mock_response
-    #     return response
 
     def _configure_balance_response(
             self,
@@ -1002,7 +944,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
             order: InFlightOrder,
             mock_api: aioresponses,
             callback: Optional[Callable] = lambda *args, **kwargs: None) -> str:
-        url = web_utils.private_rest_url(CONSTANTS.CANCEL_ORDER_URL)
+        url = web_utils.public_rest_url(CONSTANTS.CANCEL_ORDER_URL)
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
         mock_api.post(regex_url, status=400, callback=callback)
         return url
@@ -1021,7 +963,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
     def configure_order_not_found_error_cancelation_response(
         self, order: InFlightOrder, mock_api: aioresponses, callback: Optional[Callable] = lambda *args, **kwargs: None
     ) -> str:
-        url = web_utils.private_rest_url(CONSTANTS.CANCEL_ORDER_URL)
+        url = web_utils.public_rest_url(CONSTANTS.CANCEL_ORDER_URL)
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
         response = {"code": -2011, "msg": "Order not found"}
         mock_api.post(regex_url, status=400, body=json.dumps(response), callback=callback)
@@ -1047,7 +989,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
             order: InFlightOrder,
             mock_api: aioresponses,
             callback: Optional[Callable] = lambda *args, **kwargs: None) -> str:
-        url = web_utils.private_rest_url(CONSTANTS.TEGRO_USER_ORDER_PATH_URL.format(order.exchange_order_id))
+        url = web_utils.public_rest_url(CONSTANTS.TEGRO_USER_ORDER_PATH_URL.format(order.exchange_order_id))
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
         response = self._order_status_request_completely_filled_mock_response(order=order)
         mock_api.get(regex_url, body=json.dumps(response), callback=callback)
@@ -1077,7 +1019,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
             order: InFlightOrder,
             mock_api: aioresponses,
             callback: Optional[Callable] = lambda *args, **kwargs: None) -> str:
-        url = web_utils.private_rest_url(path_url=CONSTANTS.TRADES_FOR_ORDER_PATH_URL.format(order.exchange_order_id))
+        url = web_utils.public_rest_url(path_url=CONSTANTS.TRADES_FOR_ORDER_PATH_URL.format(order.exchange_order_id))
         regex_url = re.compile(url + r"\?.*")
         mock_api.get(regex_url, status=400, callback=callback)
         return url
@@ -1090,7 +1032,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
         """
         :return: the URL configured
         """
-        url = web_utils.private_rest_url(CONSTANTS.TEGRO_USER_ORDER_PATH_URL.format(order.exchange_order_id))
+        url = web_utils.public_rest_url(CONSTANTS.TEGRO_USER_ORDER_PATH_URL.format(order.exchange_order_id))
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
         response = self._order_status_request_open_mock_response(order=order)
         mock_api.get(regex_url, body=json.dumps(response), callback=callback)
@@ -1101,7 +1043,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
             order: InFlightOrder,
             mock_api: aioresponses,
             callback: Optional[Callable] = lambda *args, **kwargs: None) -> str:
-        url = web_utils.private_rest_url(CONSTANTS.TEGRO_USER_ORDER_PATH_URL.format(order.exchange_order_id))
+        url = web_utils.public_rest_url(CONSTANTS.TEGRO_USER_ORDER_PATH_URL.format(order.exchange_order_id))
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
         mock_api.get(regex_url, status=401, callback=callback)
         return url
@@ -1111,7 +1053,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
             order: InFlightOrder,
             mock_api: aioresponses,
             callback: Optional[Callable] = lambda *args, **kwargs: None) -> str:
-        url = web_utils.private_rest_url(CONSTANTS.TEGRO_USER_ORDER_PATH_URL.format(order.exchange_order_id))
+        url = web_utils.public_rest_url(CONSTANTS.TEGRO_USER_ORDER_PATH_URL.format(order.exchange_order_id))
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
         response = self._order_status_request_partially_filled_mock_response(order=order)
         mock_api.get(regex_url, body=json.dumps(response), callback=callback)
@@ -1120,7 +1062,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
     def configure_order_not_found_error_order_status_response(
         self, order: InFlightOrder, mock_api: aioresponses, callback: Optional[Callable] = lambda *args, **kwargs: None
     ) -> List[str]:
-        url = web_utils.private_rest_url(CONSTANTS.TEGRO_USER_ORDER_PATH_URL.format(order.exchange_order_id))
+        url = web_utils.public_rest_url(CONSTANTS.TEGRO_USER_ORDER_PATH_URL.format(order.exchange_order_id))
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
         response = {"code": -2013, "msg": "Order does not exist."}
         mock_api.get(regex_url, body=json.dumps(response), status=400, callback=callback)
@@ -1131,7 +1073,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
             order: InFlightOrder,
             mock_api: aioresponses,
             callback: Optional[Callable] = lambda *args, **kwargs: None) -> str:
-        url = web_utils.private_rest_url(path_url=CONSTANTS.TRADES_FOR_ORDER_PATH_URL.format(order.exchange_order_id))
+        url = web_utils.public_rest_url(path_url=CONSTANTS.TRADES_FOR_ORDER_PATH_URL.format(order.exchange_order_id))
         regex_url = re.compile(url + r"\?.*")
         response = self._order_fills_request_partial_fill_mock_response(order=order)
         mock_api.get(regex_url, body=json.dumps(response), callback=callback)
@@ -1262,6 +1204,58 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
                 "volumePrecision": "1000000000000000000"
             }
         }
+
+    def get_last_traded_prices_rest_msg(self):
+        return [
+            {
+                "id": "80002_0x6b94a36d6ff05886d44b3dafabdefe85f09563ba_0x7551122e441edbf3fffcbcf2f7fcc636b636482b",  # noqa: mock
+                "base_contract_address": "0x6b94a36d6ff05886d44b3dafabdefe85f09563ba",  # noqa: mock
+                "quote_contract_address": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",  # noqa: mock
+                "chain_id": 80002,
+                "symbol": f"{self.base_asset}_{self.quote_asset}",
+                "state": "verified",
+                "base_symbol": self.base_asset,
+                "quote_symbol": self.quote_asset,
+                "base_decimal": 18,
+                "quote_decimal": 6,
+                "base_precision": 6,
+                "quote_precision": 10,
+                "ticker": {
+                    "base_volume": 265306,
+                    "quote_volume": 1423455.3812000754,
+                    "price": self.expected_latest_price,
+                    "price_change_24h": -85.61,
+                    "price_high_24h": 10,
+                    "price_low_24h": 0.2806,
+                    "ask_low": 0.2806,
+                    "bid_high": 10
+                }
+            },
+            {
+                "id": "80002_0x6b94a36d6ff05886d44b3dafabdefe85f09563ba_0x7551122e441edbf3fffcbcf2f7fcc636b636482b",  # noqa: mock
+                "base_contract_address": "0x6b94a36d6ff05886d44b3dafabdefe85f09563ba",  # noqa: mock
+                "quote_contract_address": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",  # noqa: mock
+                "chain_id": 80002,
+                "symbol": "SOME_PAIR",
+                "state": "verified",
+                "base_symbol": "SOME",
+                "quote_symbol": "PAIR",
+                "base_decimal": 18,
+                "quote_decimal": 6,
+                "base_precision": 6,
+                "quote_precision": 10,
+                "ticker": {
+                    "base_volume": 265306,
+                    "quote_volume": 1423455.3812000754,
+                    "price": 0.9541,
+                    "price_change_24h": -85.61,
+                    "price_high_24h": 10,
+                    "price_low_24h": 0.2806,
+                    "ask_low": 0.2806,
+                    "bid_high": 10
+                }
+            }
+        ]
 
     @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange._update_balances", new_callable=AsyncMock)
     @aioresponses()
@@ -1834,12 +1828,6 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
             )
         )
 
-    def test_lost_order_removed_if_not_found_during_order_status_update(self):
-        pass
-
-    def test_update_order_status_when_request_fails_marks_order_as_not_found(self):
-        pass
-
     # @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange._all_trade_updates_for_order", new_callable=AsyncMock)
     # @aioresponses()
     # def test_user_stream_update_for_order_full_fill(
@@ -1981,15 +1969,6 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
     #     self.assertTrue(order.is_filled)
     #     self.assertTrue(order.is_failure)
 
-    def test_lost_order_user_stream_full_fill_events_are_processed(self):
-        pass
-
-    def test_user_stream_update_for_order_full_fill(self):
-        pass
-
-    def test_update_order_status_when_canceled(self):
-        pass
-
     # @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange._all_trade_updates_for_order", new_callable=AsyncMock)
     # @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange._request_order_status", new_callable=AsyncMock)
     # @aioresponses()
@@ -2054,6 +2033,15 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
     #         )
     #     )
 
+    def test_update_order_status_when_canceled(self):
+        pass
+
+    def test_lost_order_user_stream_full_fill_events_are_processed(self):
+        pass
+
+    def test_user_stream_update_for_order_full_fill(self):
+        pass
+
     def test_update_order_status_when_filled(self):
         pass
 
@@ -2067,6 +2055,12 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
         pass
 
     def test_update_order_status_when_order_has_not_changed(self):
+        pass
+
+    def test_lost_order_removed_if_not_found_during_order_status_update(self):
+        pass
+
+    def test_update_order_status_when_request_fails_marks_order_as_not_found(self):
         pass
 
     def trade_event_for_no_fill_websocket_update(self, order: InFlightOrder):
@@ -2093,7 +2087,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
     #     mock_status.return_value = self._order_status_request_failed_mock_response(order)
     #     mock_trades.return_value = []
 
-    #     url = web_utils.private_rest_url(CONSTANTS.ORDER_LIST.format(order.exchange_order_id))
+    #     url = web_utils.public_rest_url(CONSTANTS.ORDER_LIST.format(order.exchange_order_id))
     #     regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
 
     #     order_status = {
@@ -2800,7 +2794,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
     def test_initialize_verified_market(
             self,
             mock_api) -> str:
-        url = web_utils.private_rest_url(CONSTANTS.EXCHANGE_INFO_PATH_URL.format(
+        url = web_utils.public_rest_url(CONSTANTS.EXCHANGE_INFO_PATH_URL.format(
             self.chain, "80002_0x6b94a36d6ff05886d44b3dafabdefe85f09563ba_0x7551122e441edbf3fffcbcf2f7fcc636b636482b"),)
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
         response = self.initialize_verified_market_response
@@ -2811,7 +2805,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
     def test_initialize_market_list(
             self,
             mock_api) -> str:
-        url = web_utils.private_rest_url(CONSTANTS.MARKET_LIST_PATH_URL)
+        url = web_utils.public_rest_url(CONSTANTS.MARKET_LIST_PATH_URL)
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
         response = self.initialize_market_list_response
         mock_api.get(regex_url, body=json.dumps(response))
@@ -2952,7 +2946,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
     #         order=order, mock_api=mock_api
     #     )
 
-    #     url = web_utils.private_rest_url(CONSTANTS.TRADES_FOR_ORDER_PATH_URL.format(order.exchange_order_id))
+    #     url = web_utils.public_rest_url(CONSTANTS.TRADES_FOR_ORDER_PATH_URL.format(order.exchange_order_id))
     #     regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
 
     #     mock_response = []
@@ -2986,7 +2980,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
     #         order=order, mock_api=mock_api
     #     )
 
-    #     url = web_utils.private_rest_url(CONSTANTS.TRADES_FOR_ORDER_PATH_URL.format(order))
+    #     url = web_utils.public_rest_url(CONSTANTS.TRADES_FOR_ORDER_PATH_URL.format(order))
     #     regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
 
     #     trade_fill_non_tracked_order = {
@@ -3061,6 +3055,64 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
 
         self.assertEqual(result, expected_client_order_id)
 
+    def test_user_stream_update_for_order_failure(self):
+        self.exchange._set_current_timestamp(1640780000)
+        self.exchange.start_tracking_order(
+            order_id="OID1",
+            exchange_order_id="100234",
+            trading_pair=self.trading_pair,
+            order_type=OrderType.LIMIT,
+            trade_type=TradeType.BUY,
+            price=Decimal("10000"),
+            amount=Decimal("1"),
+        )
+        order = self.exchange.in_flight_orders["OID1"]
+
+        event_message = {
+            "action": "order_submitted",
+            "data": {
+                "order_id": str(order.exchange_order_id),
+                "order_hash": "3e45ac4a7c67ab9fd9392c6bdefb0b3de8e498811dd8ac934bbe8cf2c26f72a7",  # noqa: mock
+                "market_id": "80002_0x6b94a36d6ff05886d44b3dafabdefe85f09563ba_0x7551122e441edbf3fffcbcf2f7fcc636b636482b",  # noqa: mock
+                "side": order.order_type.name.lower(),
+                "base_currency": self.base_asset,
+                "quote_currency": self.quote_asset,
+                "contract_address": "0xcf9eb56c69ddd4f9cfdef880c828de7ab06b4614",  # noqa: mock
+                "quantity": str(order.amount),
+                "quantity_filled": "0",
+                "quantity_pending": "0",
+                "price": str(order.price),
+                "avg_price": "3490",
+                "price_precision": "3490000000000000000000",
+                "volume_precision": "3999900000000000000",
+                "total": "13959.651",
+                "fee": "0",
+                "status": "canceled",
+                "cancel": {
+                    "reason": "user_cancel",
+                    "code": 711
+                },
+                "timestamp": 1499827319559
+            }
+        }
+
+        mock_queue = AsyncMock()
+        mock_queue.get.side_effect = [event_message, asyncio.CancelledError]
+        self.exchange._user_stream_tracker._user_stream = mock_queue
+
+        try:
+            self.async_run_with_timeout(self.exchange._user_stream_event_listener())
+        except asyncio.CancelledError:
+            pass
+
+        failure_event: MarketOrderFailureEvent = self.order_failure_logger.event_log[0]
+        self.assertEqual(self.exchange.current_timestamp, failure_event.timestamp)
+        self.assertEqual(order.client_order_id, failure_event.order_id)
+        self.assertEqual(order.order_type, failure_event.order_type)
+        self.assertNotIn(order.client_order_id, self.exchange.in_flight_orders)
+        self.assertTrue(order.is_failure)
+        self.assertTrue(order.is_done)
+
     @patch('hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange.sign_inner')
     @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange._generate_typed_data", new_callable=AsyncMock)
     @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange._make_trading_pairs_request", new_callable=AsyncMock)
@@ -3089,7 +3141,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
 
         mock_messaage.return_value = "0xc5bb16ccc59ae9a3ad1cb8343d4e3351f057c994a97656e1aff8c134e56f7530"  # noqa: mock
 
-        url = web_utils.private_rest_url(CONSTANTS.ORDER_PATH_URL)
+        url = web_utils.public_rest_url(CONSTANTS.ORDER_PATH_URL)
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
         mock_response = {"code": -1003, "msg": "Unknown error, please check your request or try again later."}
         mock_api.post(regex_url, body=json.dumps(mock_response), status=503)
@@ -3135,7 +3187,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
 
         mock_messaage.return_value = "0xc5bb16ccc59ae9a3ad1cb8343d4e3351f057c994a97656e1aff8c134e56f7530"  # noqa: mock
 
-        url = web_utils.private_rest_url(CONSTANTS.ORDER_PATH_URL)
+        url = web_utils.public_rest_url(CONSTANTS.ORDER_PATH_URL)
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
         mock_response = {"code": -1003, "msg": "Service Unavailable."}
         mock_api.post(regex_url, body=json.dumps(mock_response), status=503)
