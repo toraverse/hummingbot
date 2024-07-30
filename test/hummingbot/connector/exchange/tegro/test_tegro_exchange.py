@@ -1987,7 +1987,6 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
             callback=lambda *args, **kwargs: request_sent_event.set())
         mock_api.get(url, body=json.dumps(resp))
         ret = self.async_run_with_timeout(coroutine=self.exchange.tokens_info())
-        print(ret)
         self.assertIn(self.base_asset, ret[1]["symbol"])
         self.assertIn(self.quote_asset, ret[0]["symbol"])
 
