@@ -46,9 +46,9 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
         cls.quote_asset = "USDT"
         cls.trading_pair = f"{cls.base_asset}-{cls.quote_asset}"
         cls.ex_trading_pair = f"{cls.base_asset}_{cls.quote_asset}"
-        cls.chain_id = "polygon"
-        cls.domain = "tegro_testnet"  # noqa: mock
-        cls.chain = 80002
+        cls.chain_id = "base"
+        cls.domain = "tegro"  # noqa: mock
+        cls.chain = 8453
         cls.rpc_url = "http://mock-rpc-url"  # noqa: mock
         cls.market_id = "80002_0x6b94a36d6ff05886d44b3dafabdefe85f09563ba_0x7551122e441edbf3fffcbcf2f7fcc636b636482b"  # noqa: mock
         cls.client_config_map = ClientConfigAdapter(ClientConfigMap())
@@ -58,6 +58,10 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
         self.log_records = []
         self.mocking_assistant = NetworkMockingAssistant()
         self.async_tasks: List[asyncio.Task] = []
+
+    async def start_network(self):
+        await super().start_network()
+        await self.exchange.approve_allowance()
 
         self.exchange = TegroExchange(
             client_config_map=self.client_config_map,
@@ -1541,51 +1545,6 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
             )
         )
 
-    # @aioresponses()
-    # def test_lost_order_removed_if_not_found_during_order_status_update(self, mock_api):
-    #     self.exchange._set_current_timestamp(1640780000)
-    #     request_sent_event = asyncio.Event()
-
-    #     self.exchange.start_tracking_order(
-    #         order_id=self.client_order_id_prefix + "1",
-    #         exchange_order_id=self.expected_exchange_order_id,
-    #         trading_pair=self.trading_pair,
-    #         order_type=OrderType.LIMIT,
-    #         trade_type=TradeType.BUY,
-    #         price=Decimal("10000"),
-    #         amount=Decimal("1"),
-    #     )
-    #     order: InFlightOrder = self.exchange.in_flight_orders[self.client_order_id_prefix + "1"]
-
-    #     for _ in range(self.exchange._order_tracker._lost_order_count_limit + 1):
-    #         self.async_run_with_timeout(
-    #             self.exchange._order_tracker.process_order_not_found(client_order_id=order.client_order_id)
-    #         )
-
-    #     self.assertNotIn(order.client_order_id, self.exchange.in_flight_orders)
-
-    #     if self.is_order_fill_http_update_included_in_status_update:
-    #         # This is done for completeness reasons (to have a response available for the trades request)
-    #         self.configure_erroneous_http_fill_trade_response(order=order, mock_api=mock_api)
-
-    #     self.configure_order_not_found_error_order_status_response(
-    #         order=order, mock_api=mock_api, callback=lambda *args, **kwargs: request_sent_event.set()
-    #     )
-
-    #     self.async_run_with_timeout(self.exchange._update_lost_orders_status())
-    #     # Execute one more synchronization to ensure the async task that processes the update is finished
-    #     self.async_run_with_timeout(request_sent_event.wait())
-
-    #     self.assertTrue(order.is_done)
-    #     self.assertTrue(order.is_failure)
-
-    #     self.assertEqual(0, len(self.buy_order_completed_logger.event_log))
-    #     self.assertNotIn(order.client_order_id, self.exchange._order_tracker.all_fillable_orders)
-
-    #     self.assertFalse(
-    #         self.is_logged("INFO", f"BUY order {order.client_order_id} completely filled.")
-    #     )
-
     @aioresponses()
     def test_update_order_status_when_filled_correctly_processed_even_when_trade_fill_update_fails(self, mock_api):
         pass
@@ -1838,7 +1797,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
 
         ret = self.async_run_with_timeout(coroutine=self.exchange.get_all_pairs_prices())
 
-        self.assertEqual(80002, ret["chain_id"])
+        self.assertEqual(8453, ret["chain_id"])
         self.assertEqual(self.ex_trading_pair, ret["symbol"])
         self.assertEqual(0.9541, ret["ticker"]["price"])
 
@@ -1974,11 +1933,12 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
         self.assertIn(self.trading_pair, ret)
         self.assertNotIn("SOME-PAIR", ret)
 
-    @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange.get_chain_list", new_callable=AsyncMock)
     @aioresponses()
-    def test_get_chain_list(self, mock_list: AsyncMock, mock_api):
+    def test_get_chain_list(self, mock_api):
+        request_sent_event = asyncio.Event()
+        self.exchange._set_current_timestamp(1640780000)
         self.exchange._set_trading_pair_symbol_map(None)
-        url = f"{CONSTANTS.CHAIN_LIST}"
+        url = web_utils.public_rest_url(CONSTANTS.CHAIN_LIST)
         resp = [
             {
                 "id": 80002,
@@ -1999,49 +1959,35 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
                 "Active": True
             }
         ]
-        mock_list.return_value = self.configure_chain_list_response(
-            mock_api=mock_api
-        )
+        self.configure_chain_list_response(
+            mock_api=mock_api,
+            callback=lambda *args, **kwargs: request_sent_event.set())
         mock_api.get(url, body=json.dumps(resp))
 
         ret = self.async_run_with_timeout(coroutine=self.exchange.get_chain_list())
+        self.assertEqual(80002, ret[0]["id"])
 
-        self.assertEqual(80002, ret[3]["id"])
-
-    @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange.tokens_info", new_callable=AsyncMock)
     @aioresponses()
-    def test_tokens_info(self, mock_list: AsyncMock, mock_api):
+    def test_tokens_info(self, mock_api):
+        request_sent_event = asyncio.Event()
+        self.exchange._set_current_timestamp(1640780000)
+        url = web_utils.public_rest_url(CONSTANTS.ACCOUNTS_PATH_URL.format(self.chain, self.tegro_api_key))
         resp = [
             {
                 "address": "0x7551122e441edbf3fffcbcf2f7fcc636b636482b",
-                "balance": "10000",
                 "symbol": self.quote_asset,
-                "decimal": 6,
-                "price": 0,
-                "price_change_24_h": 0,
-                "type": "quote",
-                "placed_amount": 0
             },
             {
                 "address": "0x6b94a36d6ff05886d44b3dafabdefe85f09563ba",
-                "balance": "10010.7",
                 "symbol": self.base_asset,
-                "decimal": 18,
-                "price": 1000,
-                "price_change_24_h": 0,
-                "type": "base",
-                "placed_amount": 0
             }
         ]
-        mock_list.return_value = self.configure_token_info_response(
-            mock_api=mock_api
-        )
-        self.exchange._set_trading_pair_symbol_map(None)
-        url = f"{CONSTANTS.ACCOUNTS_PATH_URL.format(self.chain, self.tegro_api_key)}"
+        self.configure_token_info_response(
+            mock_api=mock_api,
+            callback=lambda *args, **kwargs: request_sent_event.set())
         mock_api.get(url, body=json.dumps(resp))
-
         ret = self.async_run_with_timeout(coroutine=self.exchange.tokens_info())
-
+        print(ret)
         self.assertIn(self.base_asset, ret[1]["symbol"])
         self.assertIn(self.quote_asset, ret[0]["symbol"])
 
@@ -2758,7 +2704,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
             "quote_currency": self.quote_asset,
             "contract_address": "0xcf9eb56c69ddd4f9cfdef880c828de7ab06b4614",  # noqa: mock
             "quantity": str(order.amount),
-            "quantity_filled": "5",
+            "quantity_filled": "0.5",
             "quantity_pending": "0",
             "price": str(order.price),
             "avg_price": "3490",
