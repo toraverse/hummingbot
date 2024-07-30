@@ -21,7 +21,7 @@ from hummingbot.connector.utils import combine_to_hb_trading_pair
 from hummingbot.core.data_type.common import OrderType, TradeType
 from hummingbot.core.data_type.in_flight_order import InFlightOrder, OrderUpdate, TradeUpdate
 from hummingbot.core.data_type.order_book_tracker_data_source import OrderBookTrackerDataSource
-from hummingbot.core.data_type.trade_fee import TokenAmount, TradeFeeBase
+from hummingbot.core.data_type.trade_fee import TradeFeeBase
 from hummingbot.core.data_type.user_stream_tracker_data_source import UserStreamTrackerDataSource
 from hummingbot.core.utils.async_utils import safe_ensure_future
 from hummingbot.core.utils.estimate_fee import build_trade_fee
@@ -511,12 +511,12 @@ class TegroExchange(ExchangePyBase):
 
             for trade in all_fills_response:
                 timestamp = trade["timestamp"]
-                symbol = trade["symbol"].split('_')[0]
+                symbol = trade["symbol"].split('_')[1]
                 fee = TradeFeeBase.new_spot_fee(
                     fee_schema = self.trade_fee_schema(),
                     trade_type = order.trade_type,
                     percent_token = symbol,
-                    flat_fees = [TokenAmount(amount=Decimal(0), token=symbol)]
+                    # flat_fees = [TokenAmount(amount=Decimal("0"), token=symbol)]
                 )
 
                 trade_update = TradeUpdate(
@@ -530,6 +530,7 @@ class TegroExchange(ExchangePyBase):
                     fill_price=Decimal(trade["price"]),
                     fill_timestamp=timestamp * 1e-3,
                 )
+                self._order_tracker.process_trade_update(trade_update)
                 trade_updates.append(trade_update)
 
         return trade_updates
