@@ -545,6 +545,7 @@ class TegroExchange(ExchangePyBase):
             },
             limit_id=CONSTANTS.TEGRO_USER_ORDER_PATH_URL,
             is_auth_required=False)
+        print(updated_order_data)
         new_states = ""
         state = updated_order_data[0]["status"]
         if state == "closed" and Decimal(updated_order_data[0]["quantity_pending"]) == Decimal("0"):
