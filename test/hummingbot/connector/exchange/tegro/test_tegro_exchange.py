@@ -17,7 +17,6 @@ from hummingbot.client.config.config_helpers import ClientConfigAdapter
 from hummingbot.connector.exchange.tegro import tegro_constants as CONSTANTS, tegro_web_utils as web_utils
 from hummingbot.connector.exchange.tegro.tegro_exchange import TegroExchange
 from hummingbot.connector.test_support.exchange_connector_test import AbstractExchangeConnectorTests
-from hummingbot.connector.test_support.network_mocking_assistant import NetworkMockingAssistant
 from hummingbot.connector.trading_rule import TradingRule
 from hummingbot.connector.utils import get_new_client_order_id
 from hummingbot.core.data_type.cancellation_result import CancellationResult
@@ -52,12 +51,6 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
         cls.rpc_url = "http://mock-rpc-url"  # noqa: mock
         cls.market_id = "80002_0x6b94a36d6ff05886d44b3dafabdefe85f09563ba_0x7551122e441edbf3fffcbcf2f7fcc636b636482b"  # noqa: mock
         cls.client_config_map = ClientConfigAdapter(ClientConfigMap())
-
-    def setUp(self) -> None:
-        super().setUp()
-        self.log_records = []
-        self.mocking_assistant = NetworkMockingAssistant()
-        self.async_tasks: List[asyncio.Task] = []
 
     async def start_network(self):
         await super().start_network()

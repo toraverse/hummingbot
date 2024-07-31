@@ -30,7 +30,7 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
         cls.quote_asset = "USDT"
         cls.trading_pair = f"{cls.base_asset}-{cls.quote_asset}"
         cls.ex_trading_pair = cls.base_asset + cls.quote_asset
-        cls.domain = "tegro_polygon_testnet"
+        cls.domain = "tegro_testnet"
 
     def setUp(self) -> None:
         super().setUp()
@@ -40,7 +40,7 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
 
         client_config_map = ClientConfigAdapter(ClientConfigMap())
         self.chain_id = "polygon"
-        self.chain = "80002"
+        self.chain = 80002
         self.connector = TegroExchange(
             client_config_map=client_config_map,
             tegro_api_key="",
