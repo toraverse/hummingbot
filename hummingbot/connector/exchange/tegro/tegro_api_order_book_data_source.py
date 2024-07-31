@@ -43,17 +43,14 @@ class TegroAPIOrderBookDataSource(OrderBookTrackerDataSource):
 
     @property
     def chain(self):
-        if self._domain == "tegro":
-            # In this case tegro is default to base mainnet
-            chain = CONSTANTS.MAINNET_CHAIN_IDS[self.chain_id]
-        elif "testnet" in self._domain:
+        chain = ""
+        if "testnet" in self._domain:
             chain = CONSTANTS.TESTNET_CHAIN_IDS[self.chain_id]
+        elif self._domain == "tegro":
+            chain_id = CONSTANTS.DEFAULT_CHAIN
+            # In this case tegro is default to base mainnet
+            chain = CONSTANTS.MAINNET_CHAIN_IDS[chain_id]
         return chain
-
-    @staticmethod
-    async def trading_pair_associated_to_exchange_symbol(symbol: str) -> str:
-        symbol_map = await TegroExchange._initialize_trading_pair_symbol_map()
-        return symbol_map[symbol]
 
     async def get_last_traded_prices(self,
                                      trading_pairs: List[str],
@@ -92,18 +89,17 @@ class TegroAPIOrderBookDataSource(OrderBookTrackerDataSource):
             if market["chainId"] == self.chain and market["symbol"] == symbol:
                 id.append(market)
         rest_assistant = await self._api_factory.get_rest_assistant()
-        data = await rest_assistant.execute_request(
+        return await rest_assistant.execute_request(
             url = tegro_web_utils.public_rest_url(CONSTANTS.EXCHANGE_INFO_PATH_URL.format(
                 self.chain, id[0]["id"]), self._domain),
             method=RESTMethod.GET,
             is_auth_required = False,
             throttler_limit_id = CONSTANTS.EXCHANGE_INFO_PATH_URL,
         )
-        return data
 
     async def initialize_market_list(self):
         rest_assistant = await self._api_factory.get_rest_assistant()
-        resp = await rest_assistant.execute_request(
+        return await rest_assistant.execute_request(
             method=RESTMethod.GET,
             params={
                 "page": 1,
@@ -115,7 +111,6 @@ class TegroAPIOrderBookDataSource(OrderBookTrackerDataSource):
             is_auth_required = False,
             throttler_limit_id = CONSTANTS.MARKET_LIST_PATH_URL,
         )
-        return resp
 
     async def _subscribe_channels(self, ws: WSAssistant):
         """

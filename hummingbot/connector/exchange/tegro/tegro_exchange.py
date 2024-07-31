@@ -156,10 +156,7 @@ class TegroExchange(ExchangePyBase):
 
         pairs_prices = data
         for pair_price_data in pairs_prices:
-            results[pair_price_data["symbol"]] = {
-                "best_bid": pair_price_data["ticker"]["bid_high"],
-                "best_ask": pair_price_data["ticker"]["ask_low"],
-            }
+            results[pair_price_data["symbol"]] = pair_price_data["ticker"]["price"]
         return results
 
     def _is_request_exception_related_to_time_synchronizer(self, request_exception: Exception):

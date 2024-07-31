@@ -116,29 +116,56 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
         }
 
     def initialize_market_list_response(self):
-        return {
-            "id": "80002_0x6b94a36d6ff05886d44b3dafabdefe85f09563ba_0x7551122e441edbf3fffcbcf2f7fcc636b636482b",  # noqa: mock
-            "base_contract_address": "0x6b94a36d6ff05886d44b3dafabdefe85f09563ba",  # noqa: mock
-            "quote_contract_address": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",  # noqa: mock
-            "chain_id": self.chain,
-            "symbol": self.ex_trading_pair,
-            "state": "verified",
-            "base_symbol": self.base_asset,
-            "quote_symbol": self.quote_asset,
-            "base_decimal": 18,
-            "quote_decimal": 6,
-            "logo": "",
-            "ticker": {
-                "base_volume": 265306,
-                "quote_volume": 1423455.3812000754,
-                "price": 0.9541,
-                "price_change_24h": -85.61,
-                "price_high_24h": 10,
-                "price_low_24h": 0.2806,
-                "ask_low": 0.2806,
-                "bid_high": 10
+        return [
+            {
+                "id": "80002_0x6b94a36d6ff05886d44b3dafabdefe85f09563ba_0x7551122e441edbf3fffcbcf2f7fcc636b636482b",  # noqa: mock
+                "symbol": "WETH_USDT",
+                "chain_id": self.chain,
+                "state": "verified",
+                "base_contract_address": "0x6b94a36d6ff05886d44b3dafabdefe85f09563ba",  # noqa: mock
+                "base_symbol": "WETH",
+                "base_decimal": 18,
+                "base_precision": 18,
+                "quote_contract_address": "0x7551122e441edbf3fffcbcf2f7fcc636b636482b",  # noqa: mock
+                "quote_symbol": "USDT",
+                "quote_decimal": 6,
+                "quote_precision": 18,
+                "ticker": {
+                    "base_volume": 4.868354267233523,
+                    "quote_volume": 6042.99235,
+                    "price": 3300,
+                    "price_change_24h": 0,
+                    "price_high_24h": 6000,
+                    "price_low_24h": 9,
+                    "ask_low": 9,
+                    "bid_high": 3400
+                }
+            },
+            {
+                "id": "80002_0xcabd9e0ea17583d57a972c00a1413295e7c69246_0x7551122e441edbf3fffcbcf2f7fcc636b636482b",  # noqa: mock
+                "symbol": "FREN_USDT",
+                "chain_id": self.chain,
+                "state": "verified",
+                "base_contract_address": "0xcabd9e0ea17583d57a972c00a1413295e7c69246",  # noqa: mock
+                "base_symbol": "FREN",
+                "base_decimal": 18,
+                "base_precision": 2,
+                "quote_contract_address": "0x7551122e441edbf3fffcbcf2f7fcc636b636482b",  # noqa: mock
+                "quote_symbol": "USDT",
+                "quote_decimal": 6,
+                "quote_precision": 8,
+                "ticker": {
+                    "base_volume": 26.97,
+                    "quote_volume": 399.2570379999999,
+                    "price": 15,
+                    "price_change_24h": 0,
+                    "price_high_24h": 16.12345679,
+                    "price_low_24h": 14,
+                    "ask_low": 14,
+                    "bid_high": 15
+                }
             }
-        }
+        ]
 
     def _trade_update_event(self):
         resp = {
@@ -254,10 +281,12 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
             self,
             mock_api) -> str:
         url = web_utils.private_rest_url(CONSTANTS.EXCHANGE_INFO_PATH_URL.format(
-            self.chain, "80002_0x6b94a36d6ff05886d44b3dafabdefe85f09563ba_0x7551122e441edbf3fffcbcf2f7fcc636b636482b"),)
+            self.chain, "80002_0x6b94a36d6ff05886d44b3dafabdefe85f09563ba_0x7551122e441edbf3fffcbcf2f7fcc636b636482b"))
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
         response = self.initialize_verified_market_response()
         mock_api.get(regex_url, body=json.dumps(response))
+
+        self.assertEqual("80002_0x6b94a36d6ff05886d44b3dafabdefe85f09563ba_0x7551122e441edbf3fffcbcf2f7fcc636b636482b", response["id"])
         return response
 
     @aioresponses()
@@ -268,6 +297,8 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
         response = self.initialize_market_list_response()
         mock_api.get(regex_url, body=json.dumps(response))
+        self.assertEqual(2, len(response))
+        self.assertEqual(self.chain, response[0]["chain_id"])
         return response
 
     @aioresponses()
@@ -280,8 +311,8 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
         mock_api.get(regex_url, body=json.dumps(response))
         return response
 
-    @patch("hummingbot.connector.exchange.tegro.tegro_api_order_book_data_source.TegroAPIOrderBookDataSource.initialize_market_list", new_callable=AsyncMock)
     @patch("hummingbot.connector.exchange.tegro.tegro_api_order_book_data_source.TegroAPIOrderBookDataSource.initialize_verified_market", new_callable=AsyncMock)
+    @patch("hummingbot.connector.exchange.tegro.tegro_api_order_book_data_source.TegroAPIOrderBookDataSource.initialize_market_list", new_callable=AsyncMock)
     @aioresponses()
     def test_get_new_order_book_successful(self, mock_list: AsyncMock, mock_verified: AsyncMock, mock_api):
         url = web_utils.public_rest_url(path_url=CONSTANTS.MARKET_LIST_PATH_URL, domain=self.domain)
@@ -318,8 +349,8 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
         self.assertEqual(50000, asks[0].amount)
         self.assertEqual(expected_update_id, asks[0].update_id)
 
-    @patch("hummingbot.connector.exchange.tegro.tegro_api_order_book_data_source.TegroAPIOrderBookDataSource.initialize_market_list", new_callable=AsyncMock)
     @patch("hummingbot.connector.exchange.tegro.tegro_api_order_book_data_source.TegroAPIOrderBookDataSource.initialize_verified_market", new_callable=AsyncMock)
+    @patch("hummingbot.connector.exchange.tegro.tegro_api_order_book_data_source.TegroAPIOrderBookDataSource.initialize_market_list", new_callable=AsyncMock)
     @aioresponses()
     def test_get_new_order_book_raises_exception(self, mock_list: AsyncMock, mock_verified: AsyncMock, mock_api):
         url = web_utils.public_rest_url(path_url=CONSTANTS.MARKET_LIST_PATH_URL, domain=self.domain)
@@ -530,8 +561,8 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
 
         self.assertEqual(diff_event["data"]["timestamp"], msg.update_id)
 
-    @patch("hummingbot.connector.exchange.tegro.tegro_api_order_book_data_source.TegroAPIOrderBookDataSource.initialize_market_list", new_callable=AsyncMock)
     @patch("hummingbot.connector.exchange.tegro.tegro_api_order_book_data_source.TegroAPIOrderBookDataSource.initialize_verified_market", new_callable=AsyncMock)
+    @patch("hummingbot.connector.exchange.tegro.tegro_api_order_book_data_source.TegroAPIOrderBookDataSource.initialize_market_list", new_callable=AsyncMock)
     @aioresponses()
     def test_listen_for_order_book_snapshots_cancelled_when_fetching_snapshot(self, mock_list: AsyncMock, mock_verified: AsyncMock, mock_api):
         url = web_utils.public_rest_url(path_url=CONSTANTS.MARKET_LIST_PATH_URL, domain=self.domain)
@@ -574,8 +605,8 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
         self.assertTrue(
             self._is_logged("ERROR", f"Unexpected error fetching order book snapshot for {self.trading_pair}."))
 
-    @patch("hummingbot.connector.exchange.tegro.tegro_api_order_book_data_source.TegroAPIOrderBookDataSource.initialize_market_list", new_callable=AsyncMock)
     @patch("hummingbot.connector.exchange.tegro.tegro_api_order_book_data_source.TegroAPIOrderBookDataSource.initialize_verified_market", new_callable=AsyncMock)
+    @patch("hummingbot.connector.exchange.tegro.tegro_api_order_book_data_source.TegroAPIOrderBookDataSource.initialize_market_list", new_callable=AsyncMock)
     @aioresponses()
     def test_listen_for_order_book_snapshots_successful(self, mock_list: AsyncMock, mock_verified: AsyncMock, mock_api):
         # Mock the async methods
