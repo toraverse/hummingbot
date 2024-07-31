@@ -10,24 +10,20 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 from aioresponses import aioresponses
 from aioresponses.core import RequestCall
-from bidict import bidict
 
 from hummingbot.client.config.client_config_map import ClientConfigMap
 from hummingbot.client.config.config_helpers import ClientConfigAdapter
 from hummingbot.connector.exchange.tegro import tegro_constants as CONSTANTS, tegro_web_utils as web_utils
 from hummingbot.connector.exchange.tegro.tegro_exchange import TegroExchange
 from hummingbot.connector.test_support.exchange_connector_test import AbstractExchangeConnectorTests
-from hummingbot.connector.test_support.network_mocking_assistant import NetworkMockingAssistant
 from hummingbot.connector.trading_rule import TradingRule
 from hummingbot.connector.utils import get_new_client_order_id
 from hummingbot.core.data_type.cancellation_result import CancellationResult
 from hummingbot.core.data_type.common import OrderType, PositionAction, TradeType
 from hummingbot.core.data_type.in_flight_order import InFlightOrder, OrderState
 from hummingbot.core.data_type.trade_fee import AddedToCostTradeFee, TradeFeeBase
-from hummingbot.core.event.event_logger import EventLogger
 from hummingbot.core.event.events import (
     BuyOrderCreatedEvent,
-    MarketEvent,
     MarketOrderFailureEvent,
     OrderCancelledEvent,
     OrderFilledEvent,
@@ -52,158 +48,6 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
         cls.rpc_url = "http://mock-rpc-url"  # noqa: mock
         cls.market_id = "80002_0x6b94a36d6ff05886d44b3dafabdefe85f09563ba_0x7551122e441edbf3fffcbcf2f7fcc636b636482b"  # noqa: mock
         cls.client_config_map = ClientConfigAdapter(ClientConfigMap())
-
-    def setUp(self) -> None:
-        super().setUp()
-        self.log_records = []
-        self.mocking_assistant = NetworkMockingAssistant()
-        self.async_tasks: List[asyncio.Task] = []
-
-        self.exchange = TegroExchange(
-            client_config_map=self.client_config_map,
-            tegro_api_key=self.tegro_api_key,  # noqa: mock
-            tegro_api_secret=self.tegro_api_secret,  # noqa: mock
-            chain_name=self.chain_id,
-            trading_pairs=[self.trading_pair],
-            domain=CONSTANTS.DEFAULT_DOMAIN,
-        )
-
-        self.exchange.logger().setLevel(1)
-        self.exchange.logger().addHandler(self)
-        self.exchange._time_synchronizer.add_time_offset_ms_sample(0)
-        self.exchange._time_synchronizer.logger().setLevel(1)
-        self.exchange._time_synchronizer.logger().addHandler(self)
-        self.exchange._order_tracker.logger().setLevel(1)
-        self.exchange._order_tracker.logger().addHandler(self)
-
-        self._initialize_event_loggers()
-
-        self.exchange.tokens_info = AsyncMock(return_value=[
-            {
-                "address": "0x7551122e441edbf3fffcbcf2f7fcc636b636482b",
-                "balance": "10000",
-                "symbol": "USDT",
-                "decimal": 6,
-                "price": 0,
-                "price_change_24_h": 0,
-                "type": "quote",
-                "placed_amount": 0
-            },
-            {
-                "address": "0x6b94a36d6ff05886d44b3dafabdefe85f09563ba",
-                "balance": "10010.7",
-                "symbol": "WETH",
-                "decimal": 18,
-                "price": 1000,
-                "price_change_24_h": 0,
-                "type": "base",
-                "placed_amount": 0
-            }
-        ])
-        self.exchange.get_chain_list = AsyncMock(return_value=[
-            {
-                "id": 80002,
-                "name": "amoy",
-                "default_quote_token_symbol": "USDT",
-                "default_quote_token_contract_address": "0x7551122E441edBF3fffcBCF2f7FCC636B636482b",
-                "exchange_contract": "0x1d0888a1552996822b71e89ca735b06aed4b20a4",
-                "settlement_contract": "0xb365f2c6b51eb5c500f80e9fc1ba771d2de9396e",
-                "logo": "",
-                "min_order_value": "2000000",
-                "fee": 0.01,
-                "native_token_symbol": "MATIC",
-                "native_token_symbol_id": "matic-network",
-                "native_token_price": 0.7,
-                "gas_per_trade": 400000,
-                "gas_price": 5,
-                "default_gas_limit": 8000000,
-                "Active": True
-            },
-            {
-                "id": 8453,
-                "name": "base",
-                "default_quote_token_symbol": "USDC",
-                "default_quote_token_contract_address": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
-                "exchange_contract": "0x7551122e441edbf3fffcbcf2f7fcc636b636482b",
-                "settlement_contract": "0xc4215dd825176e8f6fe55f532fefe6c65ec5f179",
-                "logo": "",
-                "min_order_value": "2000000",
-                "fee": 0.05,
-                "native_token_symbol": "ETH",
-                "native_token_symbol_id": "ethereum",
-                "native_token_price": 3085,
-                "gas_per_trade": 400000,
-                "gas_price": 0.062,
-                "default_gas_limit": 5000000,
-                "Active": True
-            },
-            {
-                "id": 42161,
-                "name": "Arbitrum One",
-                "default_quote_token_symbol": "USDT",
-                "default_quote_token_contract_address": "0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9",
-                "exchange_contract": "0x34ca94e5ac475238827363f66c065fb54b0db416",
-                "settlement_contract": "0xa45e62e64f8a59726aa91d0fb6c5b85b00c454a7",
-                "logo": "",
-                "min_order_value": "2000000",
-                "fee": 0.01,
-                "native_token_symbol": "ETH",
-                "native_token_symbol_id": "ethereum",
-                "native_token_price": 3364,
-                "gas_per_trade": 400000,
-                "gas_price": 0.01,
-                "default_gas_limit": 5000000,
-                "Active": True
-            },
-            {
-                "id": 11155420,
-                "name": "optimism",
-                "default_quote_token_symbol": "OPUSDT",
-                "default_quote_token_contract_address": "0x7bda2a5ee22fe43bc1ab2bcba97f7f9504645c08",
-                "exchange_contract": "0xad841d6718518e78fd737E45D01bc406Aa7bc098",
-                "settlement_contract": "0x9c9e5f6D2F1b033CaCa7AE243D6F3212d0B4cBee",
-                "logo": "",
-                "min_order_value": "2000000",
-                "fee": 0.01,
-                "native_token_symbol": "ETH",
-                "native_token_symbol_id": "ethereum",
-                "native_token_price": 3000,
-                "gas_per_trade": 400000,
-                "gas_price": 2,
-                "default_gas_limit": 8000000,
-                "Active": True
-            }
-        ])
-        self.exchange._set_trading_pair_symbol_map(bidict({self.ex_trading_pair: self.trading_pair}))
-
-    def tearDown(self) -> None:
-        for task in self.async_tasks:
-            task.cancel()
-        super().tearDown()
-
-    def _initialize_event_loggers(self):
-        self.buy_order_completed_logger = EventLogger()
-        self.buy_order_created_logger = EventLogger()
-        self.order_cancelled_logger = EventLogger()
-        self.order_failure_logger = EventLogger()
-        self.order_filled_logger = EventLogger()
-        self.sell_order_completed_logger = EventLogger()
-        self.sell_order_created_logger = EventLogger()
-
-        events_and_loggers = [
-            (MarketEvent.BuyOrderCompleted, self.buy_order_completed_logger),
-            (MarketEvent.BuyOrderCreated, self.buy_order_created_logger),
-            (MarketEvent.OrderCancelled, self.order_cancelled_logger),
-            (MarketEvent.OrderFailure, self.order_failure_logger),
-            (MarketEvent.OrderFilled, self.order_filled_logger),
-            (MarketEvent.SellOrderCompleted, self.sell_order_completed_logger),
-            (MarketEvent.SellOrderCreated, self.sell_order_created_logger)]
-
-        for event, logger in events_and_loggers:
-            self.exchange.add_listener(event, logger)
-
-    def handle(self, record):
-        self.log_records.append(record)
 
     @property
     def all_symbols_url(self):
