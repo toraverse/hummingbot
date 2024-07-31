@@ -175,7 +175,6 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
             }
         ])
         self.exchange._set_trading_pair_symbol_map(bidict({self.ex_trading_pair: self.trading_pair}))
-        self.async_run_with_timeout(self.exchange.start_network())
 
     def tearDown(self) -> None:
         for task in self.async_tasks:
