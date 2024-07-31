@@ -17,6 +17,7 @@ from hummingbot.client.config.config_helpers import ClientConfigAdapter
 from hummingbot.connector.exchange.tegro import tegro_constants as CONSTANTS, tegro_web_utils as web_utils
 from hummingbot.connector.exchange.tegro.tegro_exchange import TegroExchange
 from hummingbot.connector.test_support.exchange_connector_test import AbstractExchangeConnectorTests
+from hummingbot.connector.test_support.network_mocking_assistant import NetworkMockingAssistant
 from hummingbot.connector.trading_rule import TradingRule
 from hummingbot.connector.utils import get_new_client_order_id
 from hummingbot.core.data_type.cancellation_result import CancellationResult
@@ -52,9 +53,11 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
         cls.market_id = "80002_0x6b94a36d6ff05886d44b3dafabdefe85f09563ba_0x7551122e441edbf3fffcbcf2f7fcc636b636482b"  # noqa: mock
         cls.client_config_map = ClientConfigAdapter(ClientConfigMap())
 
-    async def start_network(self):
-        await super().start_network()
-        await self.exchange.approve_allowance()
+    def setUp(self) -> None:
+        super().setUp()
+        self.log_records = []
+        self.mocking_assistant = NetworkMockingAssistant()
+        self.async_tasks: List[asyncio.Task] = []
 
         self.exchange = TegroExchange(
             client_config_map=self.client_config_map,
@@ -99,6 +102,42 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
         ])
         self.exchange.get_chain_list = AsyncMock(return_value=[
             {
+                "id": 80002,
+                "name": "amoy",
+                "default_quote_token_symbol": "USDT",
+                "default_quote_token_contract_address": "0x7551122E441edBF3fffcBCF2f7FCC636B636482b",
+                "exchange_contract": "0x1d0888a1552996822b71e89ca735b06aed4b20a4",
+                "settlement_contract": "0xb365f2c6b51eb5c500f80e9fc1ba771d2de9396e",
+                "logo": "",
+                "min_order_value": "2000000",
+                "fee": 0.01,
+                "native_token_symbol": "MATIC",
+                "native_token_symbol_id": "matic-network",
+                "native_token_price": 0.7,
+                "gas_per_trade": 400000,
+                "gas_price": 5,
+                "default_gas_limit": 8000000,
+                "Active": True
+            },
+            {
+                "id": 8453,
+                "name": "base",
+                "default_quote_token_symbol": "USDC",
+                "default_quote_token_contract_address": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+                "exchange_contract": "0x7551122e441edbf3fffcbcf2f7fcc636b636482b",
+                "settlement_contract": "0xc4215dd825176e8f6fe55f532fefe6c65ec5f179",
+                "logo": "",
+                "min_order_value": "2000000",
+                "fee": 0.05,
+                "native_token_symbol": "ETH",
+                "native_token_symbol_id": "ethereum",
+                "native_token_price": 3085,
+                "gas_per_trade": 400000,
+                "gas_price": 0.062,
+                "default_gas_limit": 5000000,
+                "Active": True
+            },
+            {
                 "id": 42161,
                 "name": "Arbitrum One",
                 "default_quote_token_symbol": "USDT",
@@ -133,45 +172,10 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
                 "gas_price": 2,
                 "default_gas_limit": 8000000,
                 "Active": True
-            },
-            {
-                "id": 8453,
-                "name": "base",
-                "default_quote_token_symbol": "USDC",
-                "default_quote_token_contract_address": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
-                "exchange_contract": "0x7551122e441edbf3fffcbcf2f7fcc636b636482b",
-                "settlement_contract": "0xc4215dd825176e8f6fe55f532fefe6c65ec5f179",
-                "logo": "",
-                "min_order_value": "2000000",
-                "fee": 0.05,
-                "native_token_symbol": "ETH",
-                "native_token_symbol_id": "ethereum",
-                "native_token_price": 3085,
-                "gas_per_trade": 400000,
-                "gas_price": 0.062,
-                "default_gas_limit": 5000000,
-                "Active": True
-            },
-            {
-                "id": 80002,
-                "name": "amoy",
-                "default_quote_token_symbol": "USDT",
-                "default_quote_token_contract_address": "0x7551122E441edBF3fffcBCF2f7FCC636B636482b",
-                "exchange_contract": "0x1d0888a1552996822b71e89ca735b06aed4b20a4",
-                "settlement_contract": "0xb365f2c6b51eb5c500f80e9fc1ba771d2de9396e",
-                "logo": "",
-                "min_order_value": "2000000",
-                "fee": 0.01,
-                "native_token_symbol": "MATIC",
-                "native_token_symbol_id": "matic-network",
-                "native_token_price": 0.7,
-                "gas_per_trade": 400000,
-                "gas_price": 5,
-                "default_gas_limit": 8000000,
-                "Active": True
             }
         ])
         self.exchange._set_trading_pair_symbol_map(bidict({self.ex_trading_pair: self.trading_pair}))
+        self.async_run_with_timeout(self.exchange.start_network())
 
     def tearDown(self) -> None:
         for task in self.async_tasks:
@@ -2152,7 +2156,6 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
         ]
         return exchange_rules
 
-    # @patch('hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange._place_order', new_callable=AsyncMock)
     @patch('hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange.sign_inner')
     @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange._generate_typed_data", new_callable=AsyncMock)
     @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange._make_trading_pairs_request", new_callable=AsyncMock)
