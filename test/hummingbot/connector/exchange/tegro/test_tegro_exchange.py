@@ -1126,6 +1126,16 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
             chain_name = "polygon")
         self.assertEqual(exchange.node_rpc, "tegro_polygon_testnet", "Testnet rpc params should be polygon")
 
+    def test_node_rpc_empty(self):
+        """Test chain property for mainnet domain"""
+        exchange = TegroExchange(
+            client_config_map = ClientConfigAdapter(ClientConfigMap()),
+            domain = "",
+            tegro_api_key = "",
+            tegro_api_secret = "",
+            chain_name = "")
+        self.assertEqual(exchange.node_rpc, "", "Empty rpc params should be empty")
+
     def test_chain_mainnet(self):
         """Test chain property for mainnet domain"""
         exchange = TegroExchange(
@@ -1147,13 +1157,13 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
         self.assertEqual(exchange.chain, 80002, "Mainnet chain ID should be 8453")
 
     def test_chain_invalid(self):
-        """Test chain property with an invalid domain"""
+        """Test chain property with an empty domain"""
         exchange = TegroExchange(
             client_config_map = ClientConfigAdapter(ClientConfigMap()),
             domain = "",
-            tegro_api_key = "tegro_api_key",
-            tegro_api_secret = "tegro_api_secret",
-            chain_name = "unknown")
+            tegro_api_key = "",
+            tegro_api_secret = "",
+            chain_name = "")
         self.assertEqual(exchange.chain, 8453, "Chain should be an base by default for empty domains")
 
     @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange._update_balances", new_callable=AsyncMock)
@@ -1504,6 +1514,45 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
         # Disabling this test because the connector has not been updated yet to validate
         # order not found during status update (check _is_order_not_found_during_status_update_error)
         pass
+
+    def test_create_order_update_with_order_status_data(self):
+        self.exchange.start_tracking_order(
+            order_id=self.client_order_id_prefix + "1",
+            exchange_order_id=str(self.expected_exchange_order_id),
+            trading_pair=self.trading_pair,
+            order_type=OrderType.LIMIT,
+            trade_type=TradeType.BUY,
+            price=Decimal("10000"),
+            amount=Decimal("1"),
+            position_action=PositionAction.OPEN,
+        )
+        order: InFlightOrder = self.exchange.in_flight_orders[self.client_order_id_prefix + "1"]
+
+        order_statuses = [
+            {"status": "closed", "quantity_pending": "0", "timestamp": 1622471123, "order_id": "12345"},
+            {"status": "open", "quantity_filled": "-1", "timestamp": 1622471123, "order_id": "12346"},
+            {"status": "open", "quantity_filled": "1", "timestamp": 1622471123, "order_id": "12347"},
+            {"status": "closed", "quantity_pending": "1", "timestamp": 1622471123, "order_id": "12348"},
+            {"status": "canceled", "cancel": {"code": 611}, "timestamp": 1622471123, "order_id": "12349"},
+            {"status": "canceled", "cancel": {"code": 712}, "timestamp": 1622471123, "order_id": "12350"},
+        ]
+
+        expected_states = [
+            OrderState.FILLED,
+            OrderState.OPEN,
+            OrderState.PARTIALLY_FILLED,
+            OrderState.PENDING_CANCEL,
+            OrderState.CANCELED,
+            OrderState.FAILED,
+        ]
+
+        for order_status, expected_state in zip(order_statuses, expected_states):
+            order_update = self.exchange._create_order_update_with_order_status_data(order_status, order)
+            self.assertEqual(order_update.new_state, expected_state)
+            self.assertEqual(order_update.trading_pair, order.trading_pair)
+            self.assertEqual(order_update.client_order_id, order.client_order_id)
+            self.assertEqual(order_update.exchange_order_id, str(order_status["order_id"]))
+            self.assertEqual(order_update.update_timestamp, order_status["timestamp"] * 1e-3)
 
     @aioresponses()
     def test_update_order_status_when_filled(self, mock_api):

@@ -100,16 +100,16 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
             tegro_api_key="tegro_api_key",
             tegro_api_secret="tegro_api_secret",
             chain_name="polygon")
-        self.assertEqual(exchange.chain, 80002, "Mainnet chain ID should be 8453")
+        self.assertEqual(exchange.chain, 80002, "Mainnet chain ID should be 80002 since polygon domain ends with testnet")
 
-    def test_chain_invalid(self):
+    def test_chain_empty(self):
         """Test chain property with an invalid domain"""
         exchange = TegroExchange(
             client_config_map=ClientConfigAdapter(ClientConfigMap()),
             domain="",
-            tegro_api_key="tegro_api_key",
-            tegro_api_secret="tegro_api_secret",
-            chain_name="unknown")
+            tegro_api_key="",
+            tegro_api_secret="",
+            chain_name="")
         self.assertEqual(exchange.chain, 8453, "Chain should be an base by default for empty domains")
 
     def _successfully_subscribed_event(self):
@@ -130,17 +130,6 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
             "quote_symbol": self.quote_asset,
             "base_decimal": 18,
             "quote_decimal": 6,
-            "logo": "",
-            "ticker": {
-                "base_volume": 265306,
-                "quote_volume": 1423455.3812000754,
-                "price": 0.9541,
-                "price_change_24h": -85.61,
-                "price_high_24h": 10,
-                "price_low_24h": 0.2806,
-                "ask_low": 0.2806,
-                "bid_high": 10
-            }
         }
 
     def initialize_market_list_response(self):
@@ -158,16 +147,6 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
                 "quote_symbol": "USDT",
                 "quote_decimal": 6,
                 "quote_precision": 18,
-                "ticker": {
-                    "base_volume": 4.868354267233523,
-                    "quote_volume": 6042.99235,
-                    "price": 3300,
-                    "price_change_24h": 0,
-                    "price_high_24h": 6000,
-                    "price_low_24h": 9,
-                    "ask_low": 9,
-                    "bid_high": 3400
-                }
             }
         ]
 
@@ -242,17 +221,7 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
                 "quote_contract_address": "0x7551122e441edbf3fffcbcf2f7fcc636b636482b",  # noqa: mock
                 "quote_symbol": "USDT",
                 "quote_decimal": 6,
-                "quote_precision": 18,
-                "ticker": {
-                    "base_volume": 4.868354267233523,
-                    "quote_volume": 6042.99235,
-                    "price": 3300,
-                    "price_change_24h": 0,
-                    "price_high_24h": 6000,
-                    "price_low_24h": 9,
-                    "ask_low": 9,
-                    "bid_high": 3400
-                }
+                "quote_precision": 18
             },
             {
                 "id": "80002_0xcabd9e0ea17583d57a972c00a1413295e7c69246_0x7551122e441edbf3fffcbcf2f7fcc636b636482b",  # noqa: mock
@@ -266,17 +235,7 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
                 "quote_contract_address": "0x7551122e441edbf3fffcbcf2f7fcc636b636482b",  # noqa: mock
                 "quote_symbol": "USDT",
                 "quote_decimal": 6,
-                "quote_precision": 8,
-                "ticker": {
-                    "base_volume": 26.97,
-                    "quote_volume": 399.2570379999999,
-                    "price": 15,
-                    "price_change_24h": 0,
-                    "price_high_24h": 16.12345679,
-                    "price_low_24h": 14,
-                    "ask_low": 14,
-                    "bid_high": 15
-                }
+                "quote_precision": 8
             }
         ]
 
