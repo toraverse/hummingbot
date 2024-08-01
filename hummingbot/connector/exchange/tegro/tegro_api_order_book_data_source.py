@@ -43,8 +43,8 @@ class TegroAPIOrderBookDataSource(OrderBookTrackerDataSource):
 
     @property
     def chain(self):
-        chain = ""
-        if "testnet" in self._domain:
+        chain = 8453
+        if self._domain.endswith("_testnet"):
             chain = CONSTANTS.TESTNET_CHAIN_IDS[self.chain_id]
         elif self._domain == "tegro":
             chain_id = CONSTANTS.DEFAULT_CHAIN

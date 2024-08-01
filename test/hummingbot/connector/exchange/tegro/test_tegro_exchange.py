@@ -1107,6 +1107,55 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
             }
         ]
 
+    def test_node_rpc_mainnet(self):
+        exchange = TegroExchange(
+            client_config_map = ClientConfigAdapter(ClientConfigMap()),
+            domain = "tegro",
+            tegro_api_key = "tegro_api_key",
+            tegro_api_secret = "tegro_api_secret",
+            chain_name = "base")
+        self.assertEqual(exchange.node_rpc, "base", "Mainnet rpc params should be base")
+
+    def test_node_rpc_testnet(self):
+        """Test chain property for mainnet domain"""
+        exchange = TegroExchange(
+            client_config_map = ClientConfigAdapter(ClientConfigMap()),
+            domain = "tegro_testnet",
+            tegro_api_key = "tegro_api_key",
+            tegro_api_secret = "tegro_api_secret",
+            chain_name = "polygon")
+        self.assertEqual(exchange.node_rpc, "tegro_polygon_testnet", "Testnet rpc params should be polygon")
+
+    def test_chain_mainnet(self):
+        """Test chain property for mainnet domain"""
+        exchange = TegroExchange(
+            client_config_map = ClientConfigAdapter(ClientConfigMap()),
+            domain = "tegro",
+            tegro_api_key = "tegro_api_key",
+            tegro_api_secret = "tegro_api_secret",
+            chain_name = "base")
+        self.assertEqual(exchange.chain, 8453, "Mainnet chain ID should be 8453")
+
+    def test_chain_testnet(self):
+        """Test chain property for mainnet domain"""
+        exchange = TegroExchange(
+            client_config_map = ClientConfigAdapter(ClientConfigMap()),
+            domain = "tegro_testnet",
+            tegro_api_key = "tegro_api_key",
+            tegro_api_secret = "tegro_api_secret",
+            chain_name = "polygon")
+        self.assertEqual(exchange.chain, 80002, "Mainnet chain ID should be 8453")
+
+    def test_chain_invalid(self):
+        """Test chain property with an invalid domain"""
+        exchange = TegroExchange(
+            client_config_map = ClientConfigAdapter(ClientConfigMap()),
+            domain = "",
+            tegro_api_key = "tegro_api_key",
+            tegro_api_secret = "tegro_api_secret",
+            chain_name = "unknown")
+        self.assertEqual(exchange.chain, 8453, "Chain should be an base by default for empty domains")
+
     @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange._update_balances", new_callable=AsyncMock)
     @aioresponses()
     def test_update_balances(
@@ -1131,6 +1180,43 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
         self.assertEqual(Decimal("15"), ret[0]["balance"])
         self.assertEqual(Decimal("2000"), ret[1]["balance"])
 
+    def configure_generate_typed_data(
+            self,
+            mock_api: aioresponses,
+            callback: Optional[Callable] = lambda *args, **kwargs: None) -> str:
+        """
+        :return: the URL configured
+        """
+        url = web_utils.public_rest_url(CONSTANTS.GENERATE_ORDER_URL)
+        response = self.generated_cancel_typed_data_response
+        mock_api.get(url, body=json.dumps(response), callback=callback)
+        return url
+
+    def configure_generate_sell_typed_data(
+            self,
+            mock_api: aioresponses,
+            callback: Optional[Callable] = lambda *args, **kwargs: None) -> str:
+        """
+        :return: the URL configured
+        """
+        url = web_utils.public_rest_url(CONSTANTS.GENERATE_ORDER_URL)
+        response = self.generated_cancel_typed_data_response
+        mock_api.get(url, body=json.dumps(response), callback=callback)
+        return url
+
+    def configure_generate_cancel_order_typed_data(
+            self,
+            order: InFlightOrder,
+            mock_api: aioresponses,
+            callback: Optional[Callable] = lambda *args, **kwargs: None) -> str:
+        """
+        :return: the URL configured
+        """
+        url = web_utils.public_rest_url(CONSTANTS.GENERATE_ORDER_URL)
+        response = self.generated_buy_typed_data_response
+        mock_api.get(url, body=json.dumps(response), callback=callback)
+        return url
+
     @patch('hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange.sign_inner')
     @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange._generate_cancel_order_typed_data", new_callable=AsyncMock)
     @aioresponses()
@@ -1139,18 +1225,19 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
         request_sent_event = asyncio.Event()
 
         self.exchange.start_tracking_order(
-            order_id=self.client_order_id_prefix + "1",
-            exchange_order_id=str(self.expected_exchange_order_id),
-            trading_pair=self.trading_pair,
-            order_type=OrderType.LIMIT,
-            trade_type=TradeType.BUY,
-            price=Decimal("10000"),
-            amount=Decimal("1"),
+            order_id = self.client_order_id_prefix + "1",
+            exchange_order_id = str(self.expected_exchange_order_id),
+            trading_pair = self.trading_pair,
+            order_type = OrderType.LIMIT,
+            trade_type = TradeType.BUY,
+            price = Decimal("10000"),
+            amount = Decimal("1"),
         )
 
         self.assertIn(self.client_order_id_prefix + "1", self.exchange.in_flight_orders)
         order = self.exchange.in_flight_orders[self.client_order_id_prefix + "1"]
-
+        self.configure_generate_cancel_order_typed_data(
+            order=order, mock_api=mock_api, callback=lambda *args, **kwargs: request_sent_event.set())
         mock_typed_data.return_value = self.generated_sell_typed_data_response
         mock_messaage.return_value = "0xc5bb16ccc59ae9a3ad1cb8343d4e3351f057c994a97656e1aff8c134e56f7530"  # noqa: mock
 
@@ -1187,7 +1274,8 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
 
         self.assertIn(self.client_order_id_prefix + "1", self.exchange.in_flight_orders)
         order = self.exchange.in_flight_orders[self.client_order_id_prefix + "1"]
-
+        self.configure_generate_cancel_order_typed_data(
+            order=order, mock_api=mock_api, callback=lambda *args, **kwargs: request_sent_event.set())
         mock_typed_data.return_value = self.generated_sell_typed_data_response
         mock_messaage.return_value = "0xc5bb16ccc59ae9a3ad1cb8343d4e3351f057c994a97656e1aff8c134e56f7530"  # noqa: mock
 
@@ -1351,7 +1439,8 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
         mock_verified.return_value = self.initialize_verified_market_response
 
         mock_typed_data.return_value = self.generated_buy_typed_data_response
-
+        self.configure_generate_typed_data(
+            mock_api=mock_api, callback=lambda *args, **kwargs: request_sent_event.set())
         mock_messaage.return_value = "0xc5bb16ccc59ae9a3ad1cb8343d4e3351f057c994a97656e1aff8c134e56f7530"  # noqa: mock
         self._simulate_trading_rules_initialized()
         request_sent_event = asyncio.Event()
@@ -1808,7 +1897,6 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
         mock_w3.eth.send_raw_transaction.return_value = "txn_hash"
         mock_w3.eth.wait_for_transaction_receipt.return_value = {"status": 1}
         request_sent_event = asyncio.Event()
-
         # Run the approve_allowance method
         txn_receipt = self.approval_reciept
         mock_queue = AsyncMock()
@@ -1853,7 +1941,8 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
         mock_verified.return_value = self.initialize_verified_market_response
 
         mock_typed_data.return_value = self.generated_buy_typed_data_response
-
+        self.configure_generate_typed_data(
+            mock_api=mock_api, callback=lambda *args, **kwargs: request_sent_event.set())
         mock_messaage.return_value = "0xc5bb16ccc59ae9a3ad1cb8343d4e3351f057c994a97656e1aff8c134e56f7530"  # noqa: mock
         self._simulate_trading_rules_initialized()
 
@@ -1938,7 +2027,8 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
         mock_verified.return_value = self.initialize_verified_market_response
 
         mock_typed_data.return_value = self.generated_sell_typed_data_response
-
+        self.configure_generate_sell_typed_data(
+            mock_api=mock_api, callback=lambda *args, **kwargs: request_sent_event.set())
         mock_messaage.return_value = "0xc5bb16ccc59ae9a3ad1cb8343d4e3351f057c994a97656e1aff8c134e56f7530"  # noqa: mock
         self._simulate_trading_rules_initialized()
 

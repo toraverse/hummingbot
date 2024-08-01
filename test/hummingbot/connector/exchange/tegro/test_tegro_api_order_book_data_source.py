@@ -43,10 +43,10 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
         self.chain = 80002
         self.connector = TegroExchange(
             client_config_map=client_config_map,
-            tegro_api_key="",
+            tegro_api_key="test_api_key",
             chain_name= "polygon",
-            tegro_api_secret="",
-            trading_pairs=[],
+            tegro_api_secret="test_api_secret",
+            trading_pairs=self.trading_pair,
             trading_required=False,
             domain=self.domain)
         self.data_source = TegroAPIOrderBookDataSource(trading_pairs=[self.trading_pair],
@@ -80,15 +80,43 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
         raise exception
 
     def async_run_with_timeout(self, coroutine: Awaitable, timeout: float = 1):
-        ret = self.ev_loop.run_until_complete(asyncio.wait_for(coroutine, timeout))
-        return ret
+        return self.ev_loop.run_until_complete(asyncio.wait_for(coroutine, timeout))
+
+    def test_chain_mainnet(self):
+        """Test chain property for mainnet domain"""
+        exchange = TegroExchange(
+            client_config_map=ClientConfigAdapter(ClientConfigMap()),
+            domain="tegro",
+            tegro_api_key="tegro_api_key",
+            tegro_api_secret="tegro_api_secret",
+            chain_name="base")
+        self.assertEqual(exchange.chain, 8453, "Mainnet chain ID should be 8453")
+
+    def test_chain_testnet(self):
+        """Test chain property for mainnet domain"""
+        exchange = TegroExchange(
+            client_config_map=ClientConfigAdapter(ClientConfigMap()),
+            domain="tegro_testnet",
+            tegro_api_key="tegro_api_key",
+            tegro_api_secret="tegro_api_secret",
+            chain_name="polygon")
+        self.assertEqual(exchange.chain, 80002, "Mainnet chain ID should be 8453")
+
+    def test_chain_invalid(self):
+        """Test chain property with an invalid domain"""
+        exchange = TegroExchange(
+            client_config_map=ClientConfigAdapter(ClientConfigMap()),
+            domain="",
+            tegro_api_key="tegro_api_key",
+            tegro_api_secret="tegro_api_secret",
+            chain_name="unknown")
+        self.assertEqual(exchange.chain, 8453, "Chain should be an base by default for empty domains")
 
     def _successfully_subscribed_event(self):
-        resp = {
+        return {
             "action": "subscribe",
             "channelId": "0x0a0cdc90cc16a0f3e67c296c8c0f7207cbdc0f4e"  # noqa: mock
         }
-        return resp
 
     def initialize_verified_market_response(self):
         return {
@@ -139,30 +167,6 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
                     "price_low_24h": 9,
                     "ask_low": 9,
                     "bid_high": 3400
-                }
-            },
-            {
-                "id": "80002_0xcabd9e0ea17583d57a972c00a1413295e7c69246_0x7551122e441edbf3fffcbcf2f7fcc636b636482b",  # noqa: mock
-                "symbol": "FREN_USDT",
-                "chain_id": self.chain,
-                "state": "verified",
-                "base_contract_address": "0xcabd9e0ea17583d57a972c00a1413295e7c69246",  # noqa: mock
-                "base_symbol": "FREN",
-                "base_decimal": 18,
-                "base_precision": 2,
-                "quote_contract_address": "0x7551122e441edbf3fffcbcf2f7fcc636b636482b",  # noqa: mock
-                "quote_symbol": "USDT",
-                "quote_decimal": 6,
-                "quote_precision": 8,
-                "ticker": {
-                    "base_volume": 26.97,
-                    "quote_volume": 399.2570379999999,
-                    "price": 15,
-                    "price_change_24h": 0,
-                    "price_high_24h": 16.12345679,
-                    "price_low_24h": 14,
-                    "ask_low": 14,
-                    "bid_high": 15
                 }
             }
         ]
@@ -297,7 +301,7 @@ class TegroAPIOrderBookDataSourceUnitTests(unittest.TestCase):
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
         response = self.initialize_market_list_response()
         mock_api.get(regex_url, body=json.dumps(response))
-        self.assertEqual(2, len(response))
+        self.assertEqual(1, len(response))
         self.assertEqual(self.chain, response[0]["chain_id"])
         return response
 

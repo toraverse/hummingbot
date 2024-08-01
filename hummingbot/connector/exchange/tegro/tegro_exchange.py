@@ -64,10 +64,6 @@ class TegroExchange(ExchangePyBase):
         self._allowance_polling_task: Optional[asyncio.Task] = None
         self.real_time_balance_update = False
 
-    @staticmethod
-    def to_hb_order_type(tegro_type: str) -> OrderType:
-        return OrderType[tegro_type]
-
     @property
     def authenticator(self):
         return TegroAuth(
@@ -93,7 +89,7 @@ class TegroExchange(ExchangePyBase):
 
     @property
     def node_rpc(self):
-        return f"tegro_{self._chain}_testnet" if "testnet" in self._domain else self._chain
+        return f"tegro_{self._chain}_testnet" if self._domain.endswith("_testnet") else self._chain
 
     @property
     def chain_id(self):
@@ -105,8 +101,8 @@ class TegroExchange(ExchangePyBase):
 
     @property
     def chain(self):
-        chain = ""
-        if "testnet" in self._domain:
+        chain = 8453
+        if self._domain.endswith("_testnet"):
             chain = CONSTANTS.TESTNET_CHAIN_IDS[self.chain_id]
         elif self._domain == "tegro":
             chain_id = CONSTANTS.DEFAULT_CHAIN
@@ -308,14 +304,13 @@ class TegroExchange(ExchangePyBase):
             price_str = price
             params["price"] = f"{price_str:.{quote_precision}g}"
         try:
-            data = await self._api_request(
+            return await self._api_request(
                 path_url = CONSTANTS.GENERATE_SIGN_URL,
                 method = RESTMethod.POST,
                 data = params,
                 is_auth_required = False,
                 limit_id = CONSTANTS.GENERATE_SIGN_URL,
             )
-            return data
         except IOError as e:
             raise IOError(f"Error submitting order {e}")
 
@@ -332,8 +327,7 @@ class TegroExchange(ExchangePyBase):
                 is_auth_required=False,
                 limit_id=CONSTANTS.GENERATE_ORDER_URL,
             )
-            signature = self.sign_inner(data)
-            return signature
+            return self.sign_inner(data)
         except IOError as e:
             error_description = str(e)
             is_not_active = ("Orders not found" in error_description)
@@ -353,8 +347,7 @@ class TegroExchange(ExchangePyBase):
         # encode and sign
         structured_data = encode_typed_data(domain_data, message_types, message_data)
         signed = self.wallet.sign_message(structured_data)
-        signature = signed.signature.hex()
-        return signature
+        return signed.signature.hex()
 
     async def _place_cancel(self, order_id: str, tracked_order: InFlightOrder):
         ids = []
@@ -415,9 +408,9 @@ class TegroExchange(ExchangePyBase):
                 step_size = Decimal(f'1e-{rule["base_precision"]}')
                 retval.append(
                     TradingRule(trading_pair,
-                                min_order_size=min_order_size,
-                                min_price_increment=Decimal(min_price_inc),
-                                min_base_amount_increment=Decimal(step_size)))
+                                min_order_size = min_order_size,
+                                min_price_increment = Decimal(min_price_inc),
+                                min_base_amount_increment = Decimal(step_size)))
             except Exception:
                 self.logger().exception(f"Error parsing the trading pair rule {rule}. Skipping.")
         return retval
@@ -676,26 +669,13 @@ class TegroExchange(ExchangePyBase):
         return receipts if len(receipts) > 0 else None
 
     async def initialize_market_list(self):
-        try:
-            resp = await self._api_request(
-                method=RESTMethod.GET,
-                params={
-                    "page": 1,
-                    "sort_order": "desc",
-                    "sort_by": "volume",
-                    "page_size": 20,
-                    "verified": "true"
-                },
-                path_url = CONSTANTS.MARKET_LIST_PATH_URL.format(self.chain),
-                is_auth_required = False,
-                limit_id = CONSTANTS.MARKET_LIST_PATH_URL,
-            )
-            return resp
-        except Exception:
-            self.logger().error(
-                "Unexpected error occurred fetching market data...", exc_info = True
-            )
-            raise
+        return await self._api_request(
+            method=RESTMethod.GET,
+            params={"page": 1, "sort_order": "desc", "sort_by": "volume", "page_size": 20, "verified": "true"},
+            path_url = CONSTANTS.MARKET_LIST_PATH_URL.format(self.chain),
+            is_auth_required = False,
+            limit_id = CONSTANTS.MARKET_LIST_PATH_URL,
+        )
 
     async def initialize_verified_market(self):
         data = await self.initialize_market_list()
@@ -705,20 +685,12 @@ class TegroExchange(ExchangePyBase):
         for market in data:
             if market["chainId"] == self.chain and market["symbol"] == symbol:
                 id.append(market)
-        try:
-            data = await self._api_request(
-                path_url = CONSTANTS.EXCHANGE_INFO_PATH_URL.format(
-                    self.chain, id[0]["id"]),
-                method=RESTMethod.GET,
-                is_auth_required = False,
-                limit_id = CONSTANTS.EXCHANGE_INFO_PATH_URL,
-            )
-            return data
-        except Exception:
-            self.logger().error(
-                "Unexpected error occurred fetching market data...", exc_info = True
-            )
-            raise
+        return await self._api_request(
+            path_url = CONSTANTS.EXCHANGE_INFO_PATH_URL.format(self.chain, id[0]["id"]),
+            method=RESTMethod.GET,
+            is_auth_required = False,
+            limit_id = CONSTANTS.EXCHANGE_INFO_PATH_URL,
+        )
 
     async def _get_last_traded_price(self, trading_pair: str) -> float:
         symbol = await self.exchange_symbol_associated_to_pair(trading_pair=trading_pair)
