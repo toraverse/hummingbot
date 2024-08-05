@@ -6,7 +6,7 @@ import fnmatch
 import numpy as np
 from setuptools import find_packages, setup
 from setuptools.command.build_ext import build_ext
-from Cython.Build import cythonize
+# from Cython.Build import cythonize
 
 is_posix = (os.name == "posix")
 
@@ -117,7 +117,7 @@ def main():
         "language_level": 3,
     }
 
-    cython_sources = ["hummingbot/**/*.pyx"]
+    # cython_sources = ["hummingbot/**/*.pyx"]
 
     compiler_directives = {
         "annotation_typing": False,
@@ -151,7 +151,7 @@ def main():
           packages=packages,
           package_data=package_data,
           install_requires=install_requires,
-          ext_modules=cythonize(cython_sources, compiler_directives=compiler_directives, **cython_kwargs),
+          #   ext_modules=cythonize(cython_sources, compiler_directives=compiler_directives, **cython_kwargs),
           include_dirs=[
               np.get_include()
           ],
