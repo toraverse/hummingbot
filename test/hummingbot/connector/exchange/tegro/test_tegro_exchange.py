@@ -21,7 +21,7 @@ from hummingbot.connector.utils import get_new_client_order_id
 from hummingbot.core.data_type.cancellation_result import CancellationResult
 from hummingbot.core.data_type.common import OrderType, PositionAction, TradeType
 from hummingbot.core.data_type.in_flight_order import InFlightOrder, OrderState
-from hummingbot.core.data_type.trade_fee import AddedToCostTradeFee, TradeFeeBase
+from hummingbot.core.data_type.trade_fee import AddedToCostTradeFee, TokenAmount, TradeFeeBase
 from hummingbot.core.event.events import (
     BuyOrderCreatedEvent,
     MarketOrderFailureEvent,
@@ -693,8 +693,8 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
     @property
     def expected_fill_fee(self) -> TradeFeeBase:
         return AddedToCostTradeFee(
-            percent_token=self.quote_asset,)
-        # flat_fees=[TokenAmount(token=self.quote_asset, amount=Decimal("0"))])
+            percent_token=self.quote_asset, flat_fees=[TokenAmount(token=self.quote_asset, amount=Decimal("30"))]
+        )
 
     @property
     def expected_fill_trade_id(self) -> str:
@@ -862,7 +862,9 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
                 "tx_hash": "0x4e240028f16196f421ab266b7ea95acaee4b7fc648e97c19a0f93b3c8f0bb32d",  # noqa: mock
                 "timestamp": 1499865549590,
                 "fee": 0,
-                "taker_type": order.order_type.name.lower(),
+                "taker_fee": "0.03",
+                "maker_fee": str(self.expected_fill_fee.flat_fees[0].amount),
+                "is_buyer_maker": True,
                 "taker": "0x1870f03410fdb205076718337e9763a91f029280",  # noqa: mock
                 "maker": "0x1870f03410fdb205076718337e9763a91f029280"  # noqa: mock
             }
@@ -936,7 +938,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
             self,
             mock_api: aioresponses,
             callback: Optional[Callable] = lambda *args, **kwargs: None) -> str:
-        url = web_utils.public_rest_url(path_url=CONSTANTS.EXCHANGE_INFO_PATH_LIST_URL.format(self.chain))
+        url = web_utils.public_rest_url(path_url=CONSTANTS.TICKER_PRICE_CHANGE_PATH_URL.format(self.chain, "80002_0x6b94a36d6ff05886d44b3dafabdefe85f09563ba_0x7551122e441edbf3fffcbcf2f7fcc636b636482b"))
         response = self._all_pair_price_response()
         mock_api.get(url, body=json.dumps(response), callback=callback)
         return url
@@ -1791,7 +1793,9 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
                 "tx_hash": "0x4e240028f16196f421ab266b7ea95acaee4b7fc648e97c19a0f93b3c8f0bb32d",  # noqa: mock
                 "timestamp": 1499865549590,
                 "fee": 0,
-                "taker_type": order.order_type.name.lower(),
+                "taker_fee": "0.03",
+                "maker_fee": str(self.expected_fill_fee.flat_fees[0].amount),
+                "is_buyer_maker": True,
                 "taker": "0x1870f03410fdb205076718337e9763a91f029280",  # noqa: mock
                 "maker": "0x1870f03410fdb205076718337e9763a91f029280"  # noqa: mock
             }
@@ -1800,15 +1804,16 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
     def trade_no_fills_update(self, order: InFlightOrder):
         return []
 
-    @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange.initialize_market_list", new_callable=AsyncMock)
     @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange.initialize_verified_market", new_callable=AsyncMock)
     @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange.initialize_market_list", new_callable=AsyncMock)
+    @patch("hummingbot.connector.exchange.tegro.tegro_exchange.TegroExchange._make_trading_pairs_request", new_callable=AsyncMock)
     @aioresponses()
-    def test_get_last_trade_prices(self, mock_verified: AsyncMock, mock_list: AsyncMock, _, mock_api):
+    def test_get_last_trade_prices(self, mock_list: AsyncMock, mock_pair: AsyncMock, mock_verified: AsyncMock, mock_api):
+        mock_pair.return_value = self.initialize_market_list_response
         mock_list.return_value = self.initialize_market_list_response
         mock_verified.return_value = self.initialize_verified_market_response
         self.exchange._set_trading_pair_symbol_map(None)
-        url = f"{CONSTANTS.EXCHANGE_INFO_PATH_LIST_URL.format(self.chain)}"
+
         resp = {
             "id": "80002_0x6b94a36d6ff05886d44b3dafabdefe85f09563ba_0x7551122e441edbf3fffcbcf2f7fcc636b636482b",  # noqa: mock
             "base_contract_address": "0x6b94a36d6ff05886d44b3dafabdefe85f09563ba",  # noqa: mock
@@ -1833,15 +1838,17 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
                 "bid_high": 10
             }
         }
-
+        url = CONSTANTS.TICKER_PRICE_CHANGE_PATH_URL.format(self.chain, resp['id'])
         self.configure_all_pair_price_response(
             mock_api=mock_api
         )
         mock_api.get(url, body=json.dumps(resp))
 
-        ret = self.async_run_with_timeout(coroutine=self.exchange.get_all_pairs_prices())
-        self.assertEqual(1, len(ret))
-        self.assertEqual(self.expected_latest_price, ret[self.ex_trading_pair])
+        latest_prices: Dict[str, float] = self.async_run_with_timeout(
+            self.exchange.get_last_traded_prices(trading_pairs=[self.trading_pair])
+        )
+        self.assertEqual(1, len(latest_prices))
+        self.assertEqual(self.expected_latest_price, latest_prices[self.trading_pair])
 
     def _simulate_trading_rules_initialized(self):
         rule = {
@@ -2546,7 +2553,9 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
                 "tx_hash": "0x4e240028f16196f421ab266b7ea95acaee4b7fc648e97c19a0f93b3c8f0bb32d",  # noqa: mock
                 "timestamp": 1499865549590,
                 "fee": 0,
-                "taker_type": order.order_type.name.lower(),
+                "taker_fee": "0.03",
+                "maker_fee": str(self.expected_fill_fee.flat_fees[0].amount),
+                "is_buyer_maker": True,
                 "taker": "0x1870f03410fdb205076718337e9763a91f029280",  # noqa: mock
                 "maker": "0x1870f03410fdb205076718337e9763a91f029280"  # noqa: mock
             }
@@ -2566,7 +2575,9 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
                 "tx_hash": "0x4e240028f16196f421ab266b7ea95acaee4b7fc648e97c19a0f93b3c8f0bb32d",  # noqa: mock
                 "timestamp": 1499865549590,
                 "fee": 0,
-                "taker_type": order.order_type.name.lower(),
+                "taker_fee": "0.03",
+                "maker_fee": str(self.expected_fill_fee.flat_fees[0].amount),
+                "is_buyer_maker": True,
                 "taker": "0x1870f03410fdb205076718337e9763a91f029280",  # noqa: mock
                 "maker": "0x1870f03410fdb205076718337e9763a91f029280"  # noqa: mock
             }
@@ -2597,8 +2608,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
         ]
 
     def _all_pair_price_response(self):
-        return [
-            {
+        return {
                 "id": "80002_0x6b94a36d6ff05886d44b3dafabdefe85f09563ba_0x7551122e441edbf3fffcbcf2f7fcc636b636482b",  # noqa: mock
                 "base_contract_address": "0x6b94a36d6ff05886d44b3dafabdefe85f09563ba",  # noqa: mock
                 "quote_contract_address": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",  # noqa: mock
@@ -2621,8 +2631,7 @@ class TegroExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
                     "ask_low": 0.2806,
                     "bid_high": 10
                 }
-            }
-        ]
+        }
 
     def _chain_list_response(self):
         return [
