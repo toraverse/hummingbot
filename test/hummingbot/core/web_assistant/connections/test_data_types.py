@@ -6,7 +6,9 @@ from typing import Awaitable
 import aiohttp
 from aioresponses import aioresponses
 
-from hummingbot.core.web_assistant.connections.data_types import EndpointRESTRequest, RESTMethod, RESTResponse
+from hummingbot.core.web_assistant.connections.data_types import (
+    RESTMethod, RESTResponse, EndpointRESTRequest
+)
 
 
 class DataTypesTest(unittest.TestCase):
@@ -32,7 +34,7 @@ class DataTypesTest(unittest.TestCase):
         body_str = json.dumps(body)
         headers = {"content-type": "application/json"}
         mocked_api.get(url=url, body=body_str, headers=headers)
-        aiohttp_response = self.async_run_with_timeout(aiohttp.ClientSession(loop=self.ev_loop).get(url))
+        aiohttp_response = self.async_run_with_timeout(aiohttp.ClientSession().get(url))
 
         response = RESTResponse(aiohttp_response)
 
@@ -56,7 +58,7 @@ class DataTypesTest(unittest.TestCase):
         body_str = json.dumps(body)
         headers = {"content-type": "application/json"}
         mocked_api.get(url=url, body=body_str, headers=headers)
-        aiohttp_response = self.async_run_with_timeout(aiohttp.ClientSession(loop=self.ev_loop).get(url))
+        aiohttp_response = self.async_run_with_timeout(aiohttp.ClientSession().get(url))
 
         response = RESTResponse(aiohttp_response)
 

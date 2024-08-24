@@ -160,7 +160,6 @@ class ExecutorBase(RunnableBase):
         """
         Stops the executor and unregisters the events.
         """
-        self.close_timestamp = self._strategy.current_timestamp
         super().stop()
         self.unregister_events()
 
@@ -235,7 +234,9 @@ class ExecutorBase(RunnableBase):
         :param order_id: The ID of the order.
         :return: The in-flight order.
         """
-        return self.connectors[connector_name]._order_tracker.fetch_order(client_order_id=order_id)
+        connector = self.connectors[connector_name]
+        order = connector._order_tracker.fetch_order(client_order_id=order_id)
+        return order
 
     def register_events(self):
         """

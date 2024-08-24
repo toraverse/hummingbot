@@ -52,8 +52,7 @@ class ExecutorOrchestrator:
             for executor in executors_list:
                 if not executor.is_closed:
                     executor.early_stop()
-
-    def store_all_executors(self):
+        # then we store all executors
         for controller_id, executors_list in self.executors.items():
             for executor in executors_list:
                 MarketsRecorder.get_instance().store_or_update_executor(executor)
@@ -168,7 +167,6 @@ class ExecutorOrchestrator:
         for executor in combined_executors:
             close_type = executor.close_type
             if close_type == CloseType.FAILED:
-                close_type_counts[close_type] = close_type_counts.get(close_type, 0) + 1
                 continue
             elif close_type is not None:
                 if close_type in close_type_counts:

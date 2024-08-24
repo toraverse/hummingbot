@@ -29,8 +29,11 @@ class StopCommand:
             import appnope
             appnope.nap()
 
+        if self._pmm_script_iterator is not None:
+            self._pmm_script_iterator.stop(self.clock)
+
         if isinstance(self.strategy, ScriptStrategyBase):
-            await self.strategy.on_stop()
+            self.strategy.on_stop()
 
         if self._trading_required and not skip_order_cancellation:
             # Remove the strategy from clock before cancelling orders, to

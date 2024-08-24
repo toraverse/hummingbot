@@ -1,10 +1,12 @@
-import asyncio
-import time
 import unittest
-
+import asyncio
 import pandas as pd
+import time
 
-from hummingbot.core.clock import Clock, ClockMode
+from hummingbot.core.clock import (
+    Clock,
+    ClockMode
+)
 from hummingbot.core.time_iterator import TimeIterator
 
 
@@ -17,7 +19,7 @@ class ClockUnitTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        cls.ev_loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()
+        cls.ev_loop: asyncio.BaseEventLoop = asyncio.get_event_loop()
 
     def setUp(self):
         super().setUp()

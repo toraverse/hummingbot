@@ -1,4 +1,3 @@
-import re
 from abc import ABC, abstractmethod
 from decimal import Decimal
 from typing import TYPE_CHECKING, Dict, List, Optional, Union
@@ -13,7 +12,6 @@ from pyinjective.core.broadcaster import (
     TransactionFeeCalculator,
 )
 from pyinjective.core.network import Network
-from pyinjective.wallet import PrivateKey
 
 from hummingbot.client.config.config_data_types import BaseClientModel, BaseConnectorConfigMap, ClientFieldData
 from hummingbot.connector.exchange.injective_v2 import injective_constants as CONSTANTS
@@ -256,9 +254,6 @@ NETWORK_MODES = {
     InjectiveCustomNetworkMode.Config.title: InjectiveCustomNetworkMode,
 }
 
-# Captures a 12 or 24-word BIP39 seed phrase
-RE_SEED_PHRASE = re.compile(r"^(?:[a-z]+(?: [a-z]+){11}|[a-z]+(?: [a-z]+){23})$")
-
 
 class InjectiveAccountMode(BaseClientModel, ABC):
 
@@ -277,7 +272,7 @@ class InjectiveDelegatedAccountMode(InjectiveAccountMode):
     private_key: SecretStr = Field(
         default=...,
         client_data=ClientFieldData(
-            prompt=lambda cm: "Enter your Injective trading account private key or seed phrase",
+            prompt=lambda cm: "Enter your Injective trading account private key",
             is_secure=True,
             is_connect_key=True,
             prompt_on_new=True,
@@ -304,16 +299,6 @@ class InjectiveDelegatedAccountMode(InjectiveAccountMode):
             prompt_on_new=True,
         ),
     )
-
-    @validator("private_key", pre=True)
-    def validate_network(cls, v: str):
-        # Both seed phrase and hex private keys supported
-        if isinstance(v, str):
-            v = v.strip()
-            if RE_SEED_PHRASE.match(v):
-                private_key = PrivateKey.from_mnemonic(v)
-                return private_key.to_hex()
-        return v
 
     class Config:
         title = "delegate_account"

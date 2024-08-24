@@ -6,7 +6,6 @@ from typing import Any, Dict, Optional
 class Chain(Enum):
     ETHEREUM = ('ethereum', 'ETH')
     TEZOS = ('tezos', 'XTZ')
-    TELOS = ('telos', 'TLOS')
 
     def __init__(self, chain: str, native_currency: str):
         self.chain = chain

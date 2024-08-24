@@ -8,7 +8,6 @@ native_tokens = {
     "avalanche": "AVAX",
     "algorand": "ALGO",
     "cosmos": "ATOM",
-    "celo": "CELO",
     "osmosis": "OSMO",
     "polygon": "MATIC",
     "harmony": "ONE",
@@ -19,8 +18,7 @@ native_tokens = {
     "xdc": "XDC",
     "tezos": "XTZ",
     "xrpl": "XRP",
-    "kujira": "KUJI",
-    "telos": "TLOS"
+    "kujira": "KUJI"
 }
 
 SUPPORTED_CHAINS = set(native_tokens.keys())

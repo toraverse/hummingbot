@@ -22,7 +22,6 @@ class TimeSynchronizer:
 
     def __init__(self):
         self._time_offset_ms: Deque[float] = deque(maxlen=5)
-        self._lock = asyncio.Lock()
 
     @classmethod
     def logger(cls) -> HummingbotLogger:
@@ -81,12 +80,11 @@ class TimeSynchronizer:
 
         :param time_provider: Awaitable object that returns the current time
         """
-        async with self._lock:
-            if not self._time_offset_ms:
-                await self.update_server_time_offset_with_time_provider(time_provider)
-            else:
-                # This is done to avoid the warning message from asyncio framework saying a coroutine was not awaited
-                time_provider.close()
+        if not self._time_offset_ms:
+            await self.update_server_time_offset_with_time_provider(time_provider)
+        else:
+            # This is done to avoid the warning message from asyncio framework saying a coroutine was not awaited
+            time_provider.close()
 
     def _current_seconds_counter(self):
         return time.perf_counter()

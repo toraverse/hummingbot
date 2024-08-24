@@ -77,6 +77,8 @@ class StatusCommand:
         else:
             st_status = self.strategy.format_status()
         status = paper_trade + "\n" + st_status
+        if self._pmm_script_iterator is not None and live is False:
+            self._pmm_script_iterator.request_status()
         return status
 
     def application_warning(self):

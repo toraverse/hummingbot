@@ -38,33 +38,26 @@ class BacktestingEngineBase:
         self.dca_executor_simulator = DCAExecutorSimulator()
 
     @classmethod
-    def load_controller_config(cls,
-                               config_path: str,
-                               controllers_conf_dir_path: str = settings.CONTROLLERS_CONF_DIR_PATH) -> Dict:
-        full_path = os.path.join(controllers_conf_dir_path, config_path)
+    def load_controller_config(cls, config_path: str) -> Dict:
+        full_path = os.path.join(settings.CONTROLLERS_CONF_DIR_PATH, config_path)
         with open(full_path, 'r') as file:
             config_data = yaml.safe_load(file)
         return config_data
 
     @classmethod
-    def get_controller_config_instance_from_yml(cls,
-                                                config_path: str,
-                                                controllers_conf_dir_path: str = settings.CONTROLLERS_CONF_DIR_PATH,
-                                                controllers_module: str = settings.CONTROLLERS_MODULE) -> ControllerConfigBase:
-        config_data = cls.load_controller_config(config_path, controllers_conf_dir_path)
-        return cls.get_controller_config_instance_from_dict(config_data, controllers_module)
+    def get_controller_config_instance_from_yml(cls, config_path: str) -> ControllerConfigBase:
+        config_data = cls.load_controller_config(config_path)
+        return cls.get_controller_config_instance_from_dict(config_data)
 
     @classmethod
-    def get_controller_config_instance_from_dict(cls,
-                                                 config_data: dict,
-                                                 controllers_module: str = settings.CONTROLLERS_MODULE) -> ControllerConfigBase:
+    def get_controller_config_instance_from_dict(cls, config_data: dict) -> ControllerConfigBase:
         controller_type = config_data.get('controller_type')
         controller_name = config_data.get('controller_name')
 
         if not controller_type or not controller_name:
             raise ValueError("Missing controller_type or controller_name in the configuration.")
 
-        module_path = f"{controllers_module}.{controller_type}.{controller_name}"
+        module_path = f"{settings.CONTROLLERS_MODULE}.{controller_type}.{controller_name}"
         module = importlib.import_module(module_path)
 
         config_class = next((member for member_name, member in inspect.getmembers(module)
@@ -91,7 +84,7 @@ class BacktestingEngineBase:
         await self.initialize_backtesting_data_provider()
         await self.controller.update_processed_data()
         executors_info = self.simulate_execution(trade_cost=trade_cost)
-        results = self.summarize_results(executors_info, controller_config.total_amount_quote)
+        results = self.summarize_results(executors_info)
         return {
             "executors": executors_info,
             "results": results,
@@ -250,7 +243,7 @@ class BacktestingEngineBase:
                 self.active_executor_simulations.remove(executor)
 
     @staticmethod
-    def summarize_results(executors_info: Dict, total_amount_quote: float = 1000):
+    def summarize_results(executors_info, total_amount_quote=1000):
         if len(executors_info) > 0:
             executors_df = pd.DataFrame([ei.to_dict() for ei in executors_info])
             net_pnl_quote = executors_df["net_pnl_quote"].sum()

@@ -27,7 +27,7 @@ class AMMDataFeedExample(ScriptStrategyBase):
         self.amm_data_feed_uniswap.start()
         self.amm_data_feed_quickswap.start()
 
-    async def on_stop(self):
+    def on_stop(self):
         self.amm_data_feed_uniswap.stop()
         self.amm_data_feed_quickswap.stop()
 
