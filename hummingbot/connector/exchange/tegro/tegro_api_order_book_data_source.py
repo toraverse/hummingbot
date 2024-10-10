@@ -17,8 +17,9 @@ if TYPE_CHECKING:
 
 class TegroAPIOrderBookDataSource(OrderBookTrackerDataSource):
     FULL_ORDER_BOOK_RESET_DELTA_SECONDS = 2
-    HEARTBEAT_TIME_INTERVAL = 30.0
+    HEARTBEAT_TIME_INTERVAL = 10.0
     TRADE_STREAM_ID = 1
+    PING_TIMEOUT = 10
     DIFF_STREAM_ID = 2
     ONE_HOUR = 60 * 60
 
@@ -112,6 +113,17 @@ class TegroAPIOrderBookDataSource(OrderBookTrackerDataSource):
             throttler_limit_id = CONSTANTS.MARKET_LIST_PATH_URL,
         )
 
+    async def _send_ping(self, websocket_assistant: WSAssistant):
+        market_data = await self.initialize_market_list()
+        param: str = self._process_market_data(market_data)
+
+        payload = {
+            "action": "subscribe",
+            "channelId": param
+        }
+        ping_request: WSJSONRequest = WSJSONRequest(payload=payload)
+        await websocket_assistant.send(ping_request)
+
     async def _subscribe_channels(self, ws: WSAssistant):
         """
         Subscribes to the trade events and diff orders events through the provided websocket connection.
@@ -137,6 +149,39 @@ class TegroAPIOrderBookDataSource(OrderBookTrackerDataSource):
                 exc_info=True
             )
             raise
+
+    async def listen_for_subscriptions(self):
+        """
+        Connects to the trade events and order diffs websocket endpoints and listens to the messages sent by the
+        exchange. Each message is stored in its own queue.
+        """
+        ws = None
+        while True:
+            try:
+                ws: WSAssistant = await self._connected_websocket_assistant()
+                await self._subscribe_channels(ws)
+                self._last_ws_message_sent_timestamp = self._time()
+                while True:
+                    try:
+                        seconds_until_next_ping = (
+                            self.PING_TIMEOUT -
+                            (self._time() - self._last_ws_message_sent_timestamp)
+                        )
+                        await asyncio.wait_for(
+                            self._process_websocket_messages(websocket_assistant=ws), timeout=seconds_until_next_ping)
+                    except asyncio.TimeoutError:
+                        ws: WSAssistant = await self._connected_websocket_assistant()
+                        await self._send_ping(ws)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                self.logger().error(
+                    "Unexpected error occurred when listening to order book streams. Retrying in 5 seconds...",
+                    exc_info=True,
+                )
+                await self._sleep(5.0)
+            finally:
+                ws and await ws.disconnect()
 
     def _process_market_data(self, market_data):
         symbol = ""

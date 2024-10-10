@@ -13,7 +13,7 @@ from hummingbot.core.web_assistant.ws_assistant import WSAssistant
 from hummingbot.logger import HummingbotLogger
 
 MESSAGE_TIMEOUT = 20.0
-PING_TIMEOUT = 5.0
+PING_TIMEOUT = 10.0
 
 
 class TegroUserStreamDataSource(UserStreamTrackerDataSource):
@@ -76,10 +76,21 @@ class TegroUserStreamDataSource(UserStreamTrackerDataSource):
                     is_auth_required=False
                 )
                 await ws.send(subscribe_request)
-                await self._send_ping(ws)
                 async for msg in ws.iter_messages():
                     if msg.data is not None and len(msg.data) > 0:
                         output.put_nowait(msg.data)
+                    self._last_ws_message_sent_timestamp = self._time()
+                    while True:
+                        try:
+                            seconds_until_next_ping = (
+                                PING_TIMEOUT -
+                                (self._time() - self._last_ws_message_sent_timestamp)
+                            )
+                            await asyncio.wait_for(
+                                self._process_websocket_messages(ws, output), timeout=seconds_until_next_ping)
+                        except asyncio.TimeoutError:
+                            await ws.connect(ws_url=web_utils.wss_url(CONSTANTS.PUBLIC_WS_ENDPOINT, self._domain), ping_timeout=PING_TIMEOUT)
+                            await self._send_ping(ws)
             except asyncio.CancelledError:
                 raise
             except Exception as e:
