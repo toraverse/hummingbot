@@ -1,0 +1,22 @@
+########################################################
+###         Volume Benchmark strategy config         ###
+########################################################
+
+template_version: 1
+strategy: null
+
+# Exchange and token parameters.
+exchange: null
+
+# Token trading pair for the exchange, e.g. BTC-USDT
+market: null
+
+min_order_amount: null
+max_order_amount: null
+min_interval: null
+max_interval: null
+
+max_pending_orders: null
+max_order_age_buy: null
+max_order_age_sell: null
+order_price_interval_percentage: null
