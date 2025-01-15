@@ -306,7 +306,11 @@ class BybitExchange(ExchangePyBase):
         # await self._update_exchange_fee_rates()
         fee_rates = await self._get_exchange_fee_rates()
         for tpfee in fee_rates:
-            trading_pair = await self.trading_pair_associated_to_exchange_symbol(symbol=tpfee["symbol"])
+            try:
+                trading_pair = await self.trading_pair_associated_to_exchange_symbol(symbol=tpfee["symbol"])
+            except KeyError:
+                self.logger().debug(f"Error parsing trading pair {tpfee['symbol']}. Skipping.")
+                continue
             self._trading_fees[trading_pair] = tpfee
 
     def _process_trade_event_message(self, trade_msg: Dict[str, Any]):
