@@ -64,6 +64,8 @@ SERVER_TIME_PATH_URL = "/v5/market/time"
 # Private API endpoints
 ACCOUNT_INFO_PATH_URL = "/v5/account/info"
 BALANCE_PATH_URL = "/v5/account/wallet-balance"
+WITHDRAWABLE = "/v5/account/withdrawal"
+WITHDRAWABLE_UNIFIED = "/v5/account/withdrawal"
 ORDER_PLACE_PATH_URL = "/v5/order/create"
 ORDER_CANCEL_PATH_URL = "/v5/order/cancel"
 GET_ORDERS_PATH_URL = "/v5/order/realtime"
@@ -120,6 +122,7 @@ ONE_HOUR = 60 * 60
 MAX_REQUEST_SECURE_DIVIDER = 2
 MAX_REQUEST_LIMIT_DEFAULT = 20 / MAX_REQUEST_SECURE_DIVIDER  # 20/s is the max
 
+MAX_REQUEST_LIMIT_UNIFIED_ACCOUNTS = 50 / MAX_REQUEST_SECURE_DIVIDER  # 50/s is the max
 # No more than 600 requests are allowed in any 5-second window.
 # https://bybit-exchange.github.io/docs/v5/rate-limit#ip-rate-limit
 SHARED_RATE_LIMIT = 600  # per 5 second
@@ -202,6 +205,22 @@ RATE_LIMITS = {
     ),
     RateLimit(
         limit_id=BALANCE_PATH_URL,
+        limit=MAX_REQUEST_LIMIT_DEFAULT,
+        time_interval=ONE_SECOND,
+        linked_limits=[
+            LinkedLimitWeightPair(REQUEST_GET_POST_SHARED),
+        ]
+    ),
+    RateLimit(
+        limit_id=WITHDRAWABLE_UNIFIED,
+        limit=MAX_REQUEST_LIMIT_UNIFIED_ACCOUNTS,
+        time_interval=ONE_SECOND,
+        linked_limits=[
+            LinkedLimitWeightPair(REQUEST_GET_POST_SHARED),
+        ]
+    ),
+    RateLimit(
+        limit_id=WITHDRAWABLE,
         limit=MAX_REQUEST_LIMIT_DEFAULT,
         time_interval=ONE_SECOND,
         linked_limits=[
