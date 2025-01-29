@@ -49,7 +49,6 @@ class BybitExchange(ExchangePyBase):
         self._account_type = None  # To be update on firtst call to balances
         self._category = CONSTANTS.TRADE_CATEGORY  # Required by the V5 API
         super().__init__(client_config_map)
-        self._pairs = []
 
     @staticmethod
     def bybit_order_type(order_type: OrderType) -> str:
@@ -206,8 +205,8 @@ class BybitExchange(ExchangePyBase):
         account_info = await self._get_account_info()
         if account_info["retCode"] != 0:
             raise ValueError(f"{account_info['retMsg']}")
-        account_type = 'SPOT' if account_info["result"]["unifiedMarginStatus"] == \
-            CONSTANTS.ACCOUNT_TYPE["REGULAR"] else 'UNIFIED'
+        account_type = 'SPOT' if account_info["result"]["unifiedMarginStatus"] == 1 else 'UNIFIED'
+
         return account_type
 
     async def _update_account_type(self):
@@ -304,17 +303,15 @@ class BybitExchange(ExchangePyBase):
         """
         Update fees information from the exchange
         """
-        await self._initialize_trading_pair_symbol_map()
         # await self._update_exchange_fee_rates()
         fee_rates = await self._get_exchange_fee_rates()
         for tpfee in fee_rates:
-            if tpfee["symbol"] in self._pairs:
-                try:
-                    trading_pair = await self.trading_pair_associated_to_exchange_symbol(symbol=tpfee["symbol"])
-                except KeyError:
-                    self.logger().warning(f"Error parsing trading pair {tpfee['symbol']}. Skipping.")
-                    continue
-            self._trading_fees[trading_pair] = tpfee
+            try:
+                trading_pair = await self.trading_pair_associated_to_exchange_symbol(symbol=tpfee["symbol"])
+                self._trading_fees[trading_pair] = tpfee
+            except KeyError:
+                # Skip pairs that are not trade enabled ie. they are not present in the trading pair map
+                continue
 
     def _process_trade_event_message(self, trade_msg: Dict[str, Any]):
         """
@@ -372,20 +369,17 @@ class BybitExchange(ExchangePyBase):
                             break
                     for balance_entry in balances:
                         asset_name = balance_entry["coin"]
-                        free_balances = await self._api_request(
-                            method=RESTMethod.GET,
-                            path_url=CONSTANTS.WITHDRAWABLE,
-                            params={
-                                'coinName': asset_name
-                            },
-                            is_auth_required=True
-                        )
-                        available = Decimal(free_balances["result"]["availableWithdrawal"])
+                        if self._account_type == "UNIFIED":
+                            free_balance = Decimal(balance_entry["walletBalance"]) - Decimal(balance_entry["locked"]) - Decimal(balance_entry["totalOrderIM"]) - Decimal(
+                                balance_entry["totalPositionMM"]) - Decimal(balance_entry["totalPositionIM"])
 
-                        free = balance_entry.get("free") if "free" in balance_entry else None
-                        free_balance = Decimal(
-                            free or available
-                        )
+                        else:
+                            free_balance = Decimal(
+                                balance_entry.get("free") or
+                                balance_entry.get("availableToWithdraw") or
+                                balance_entry.get("availableToBorrow")
+                            )
+
                         total_balance = Decimal(balance_entry["walletBalance"])
                         self._account_available_balances[asset_name] = free_balance
                         self._account_balances[asset_name] = total_balance
@@ -540,28 +534,17 @@ class BybitExchange(ExchangePyBase):
             raise ValueError(f"{balances['retMsg']}")
         self._account_available_balances.clear()
         self._account_balances.clear()
-        url_path = CONSTANTS.WITHDRAWABLE_UNIFIED if self._account_type == "UNIFIED" else CONSTANTS.WITHDRAWABLE
         for coin in balances["result"]["list"][0]["coin"]:
             name = coin["coin"]
-            free_coin_balance = await self._api_request(
-                method=RESTMethod.GET,
-                path_url=url_path,
-                params={
-                    'coinName': name
-                },
-                is_auth_required=True
-            )
-            available = Decimal(free_coin_balance["result"]["availableWithdrawal"])
-            free_balance = Decimal(coin["free"]) if self._account_type == "SPOT" \
-                else available
+            free_balance = Decimal(coin["free"]) if self._account_type == "SPOT" else Decimal(coin["walletBalance"]) - Decimal(coin["locked"]) - Decimal(coin["totalOrderIM"]) - Decimal(
+                coin["totalPositionMM"]) - Decimal(coin["totalPositionIM"])
             balance = Decimal(coin["walletBalance"])
             self._account_available_balances[name] = free_balance
-            self._account_balances[name] = balance
+            self._account_balances[name] = Decimal(balance)
 
     def _initialize_trading_pair_symbols_from_exchange_info(self, exchange_info: Dict[str, Any]):
         mapping = bidict()
         for symbol_data in exchange_info["result"]['list']:
-            self._pairs.append(symbol_data["symbol"])
             mapping[symbol_data["symbol"]] = combine_to_hb_trading_pair(
                 base=symbol_data["baseCoin"],
                 quote=symbol_data["quoteCoin"]
