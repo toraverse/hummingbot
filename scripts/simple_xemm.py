@@ -95,11 +95,13 @@ class SimpleXEMM(ScriptStrategyBase):
         return
 
     def buy_hedging_budget(self) -> Decimal:
+        self.logger().warning("calculating buy_hedging_budget to place buy trade on taker exchange")
         base_asset = self.config.taker_pair.split("-")[0]
         balance = self.connectors[self.config.taker_exchange].get_available_balance(base_asset)
         return balance
 
     def sell_hedging_budget(self) -> Decimal:
+        self.logger().warning("calculating sell_hedging_budget to place sell trade on taker exchange")
         quote_asset = self.config.taker_pair.split("-")[1]
         balance = self.connectors[self.config.taker_exchange].get_available_balance(quote_asset)
         taker_buy_result = self.connectors[self.config.taker_exchange].get_price_for_volume(self.config.taker_pair, True, self.config.order_amount)
@@ -126,6 +128,7 @@ class SimpleXEMM(ScriptStrategyBase):
                 self.sell_order_placed = False
 
     def place_buy_order(self, exchange: str, trading_pair: str, amount: Decimal, order_type: OrderType = OrderType.LIMIT):
+        self.logger().warning("placing buy order on taker exchange")
         buy_result = self.connectors[exchange].get_price_for_volume(trading_pair, True, amount)
         buy_price_with_slippage = buy_result.result_price * Decimal(1 + self.config.slippage_buffer_spread_bps / 10000)
         buy_order = OrderCandidate(trading_pair=trading_pair, is_maker=False, order_type=order_type, order_side=TradeType.BUY, amount=amount, price=buy_price_with_slippage)
@@ -133,6 +136,7 @@ class SimpleXEMM(ScriptStrategyBase):
         self.buy(exchange, trading_pair, buy_order_adjusted.amount, buy_order_adjusted.order_type, buy_order_adjusted.price)
 
     def place_sell_order(self, exchange: str, trading_pair: str, amount: Decimal, order_type: OrderType = OrderType.LIMIT):
+        self.logger().warning("placing sell order on taker exchange")
         sell_result = self.connectors[exchange].get_price_for_volume(trading_pair, False, amount)
         sell_price_with_slippage = sell_result.result_price * Decimal(1 - self.config.slippage_buffer_spread_bps / 10000)
         sell_order = OrderCandidate(trading_pair=trading_pair, is_maker=False, order_type=order_type, order_side=TradeType.SELL, amount=amount, price=sell_price_with_slippage)
