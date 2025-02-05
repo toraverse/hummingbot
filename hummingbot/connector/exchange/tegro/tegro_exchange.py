@@ -447,11 +447,11 @@ class TegroExchange(ExchangePyBase):
         new_states = self.get_state(order_status)
         confirmed_state = CONSTANTS.ORDER_STATE[new_states]
         if confirmed_state == "completed":
-            self.logger().info(f"Order {order.client_order_id} has been completed both on exchange and on chain with {order_status['quantity_filled']} filled.")
+            self.logger().debug(f"Order {order.client_order_id} has been completed both on exchange and on chain with {order_status['quantity_filled']} filled.")
         elif confirmed_state == "pending":
-            self.logger().info(f"Order {order.client_order_id} has been completed on exchange and not on chain with {order_status['quantity_filled']} filled.")
+            self.logger().debug(f"Order {order.client_order_id} has been completed on exchange and not on chain with {order_status['quantity_filled']} filled.")
         elif confirmed_state == "partial":
-            self.logger().info(f"Order {order.client_order_id} has been partially filled. with {order_status['quantity_filled']} filled.")
+            self.logger().debug(f"Order {order.client_order_id} has been partially filled. with {order_status['quantity_filled']} filled.")
         order_update = OrderUpdate(
             trading_pair=order.trading_pair,
             update_timestamp=order_status["timestamp"] * 1e-3,
@@ -551,11 +551,11 @@ class TegroExchange(ExchangePyBase):
             is_auth_required=False)
         new_states = self.get_state(updated_order_data)
         if new_states == "completed":
-            self.logger().info(f"Order {tracked_order.client_order_id} has been completed both on exchange and on chain with {updated_order_data[0]['quantity_filled']} filled.")
+            self.logger().debug(f"Order {tracked_order.client_order_id} has been completed both on exchange and on chain with {updated_order_data[0]['quantity_filled']} filled.")
         elif new_states == "pending":
-            self.logger().info(f"Order {tracked_order.client_order_id} has been completed on exchange and not on chain with {updated_order_data[0]['quantity_filled']} filled.")
+            self.logger().debug(f"Order {tracked_order.client_order_id} has been completed on exchange and not on chain with {updated_order_data[0]['quantity_filled']} filled.")
         elif new_states == "partial":
-            self.logger().info(f"Order {tracked_order.client_order_id} has been partially filled. with {updated_order_data[0]['quantity_filled']} filled.")
+            self.logger().debug(f"Order {tracked_order.client_order_id} has been partially filled. with {updated_order_data[0]['quantity_filled']} filled.")
         confirmed_state = CONSTANTS.ORDER_STATE[new_states]
         order_update = OrderUpdate(
             client_order_id=tracked_order.client_order_id,
