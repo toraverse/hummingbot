@@ -224,6 +224,13 @@ class XEMMExecutor(ExecutorBase):
     async def control_update_maker_order(self):
         await self.update_current_trade_profitability()
         if self._current_trade_profitability - self._tx_cost_pct < self.config.min_profitability:
+            self.logger().info("..................................................:.........................:.........................:.........................:")
+            self.logger().info(f"Transaction Cost.........................: {self._tx_cost_pct }")
+            self.logger().info("..................................................:.........................:.........................:.........................:")
+            self.logger().info(f"Taker Price.........................: {self._taker_result_price }")
+            self.logger().info("..................................................:.........................:.........................:.........................:")
+            self.logger().info(f"Maker Price......................... {self.maker_order.order.price }......................{self.maker_order.order.exchange_order_id }")
+            self.logger().info("..................................................:.........................:.........................:.........................:")
             self.logger().info(f"Trade profitability {self._current_trade_profitability - self._tx_cost_pct} is below minimum profitability. Cancelling order.")
             self._strategy.cancel(self.maker_connector, self.maker_trading_pair, self.maker_order.order_id)
             self.maker_order = None
