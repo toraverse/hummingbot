@@ -229,7 +229,6 @@ class XEMMExecutor(ExecutorBase):
             self.logger().info("..................................................:.........................:.........................:.........................:")
             self.logger().info(f"Taker Price.........................: {self._taker_result_price }")
             self.logger().info("..................................................:.........................:.........................:.........................:")
-            self.logger().info(f"Maker Price......................... {self.maker_order.order.price }......................{self.maker_order.order.exchange_order_id }")
             self.logger().info("..................................................:.........................:.........................:.........................:")
             self.logger().info(f"Trade profitability {self._current_trade_profitability - self._tx_cost_pct} is below minimum profitability. Cancelling order.")
             self._strategy.cancel(self.maker_connector, self.maker_trading_pair, self.maker_order.order_id)
@@ -243,6 +242,7 @@ class XEMMExecutor(ExecutorBase):
         trade_profitability = Decimal("0")
         if self.maker_order and self.maker_order.order and self.maker_order.order.is_open:
             maker_price = self.maker_order.order.price
+            self.logger().info(f"Maker Price......................... {maker_price }......................{self.maker_order.order.exchange_order_id }")
             # Get the conversion rate to normalize prices to the same quote asset
             try:
                 conversion_rate = await self.get_quote_asset_conversion_rate()
