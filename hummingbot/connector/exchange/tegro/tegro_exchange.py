@@ -530,7 +530,7 @@ class TegroExchange(ExchangePyBase):
         elif state == "open" and Decimal(data["quantity_filled"]) > Decimal("0"):
             new_states = "partial"
         elif state == "closed" and Decimal(data["quantity_pending"]) > Decimal("0"):
-            new_states = "completed"
+            new_states = "pending"
         elif state == "cancelled" and data["cancel"]["code"] == 611:
             new_states = "cancelled"
         elif state == "cancelled" and data["cancel"]["code"] != 611:
