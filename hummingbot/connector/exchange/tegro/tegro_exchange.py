@@ -446,11 +446,11 @@ class TegroExchange(ExchangePyBase):
     def _create_order_update_with_order_status_data(self, order_status: Dict[str, Any], order: InFlightOrder):
         new_states = self.get_state(order_status)
         confirmed_state = CONSTANTS.ORDER_STATE[new_states]
-        if confirmed_state == "completed":
+        if new_states == "completed":
             self.logger().info(f"Order {order.client_order_id} has been completed both on exchange and on chain with {order_status['quantity_filled']} filled.")
-        if confirmed_state == "pending":
+        if new_states == "pending":
             self.logger().info(f"Order {order.client_order_id} has been completed on exchange and not on chain with {order_status['quantity_filled']} filled.")
-        if confirmed_state == "partial":
+        if new_states == "partial":
             self.logger().info(f"Order {order.client_order_id} has been partially filled. with {order_status['quantity_filled']} filled.")
         order_update = OrderUpdate(
             trading_pair=order.trading_pair,
