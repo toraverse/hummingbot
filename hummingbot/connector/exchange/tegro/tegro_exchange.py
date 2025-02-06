@@ -432,7 +432,7 @@ class TegroExchange(ExchangePyBase):
                         f"Unexpected message in user stream: {event_message}.", exc_info = True)
                     continue
                 elif channel == CONSTANTS.USER_METHODS["ORDER_SUBMITTED"]:
-                    await self._process_order_message(results)
+                    await self._process_order_message(results, fetch_trades = True)
                 elif channel == CONSTANTS.USER_METHODS["ORDER_TRADE_PROCESSED"]:
                     await self._process_order_message(results, fetch_trades = True)
 
@@ -530,7 +530,7 @@ class TegroExchange(ExchangePyBase):
         elif state == "open" and Decimal(data["quantity_filled"]) > Decimal("0"):
             new_states = "partial"
         elif state == "closed" and Decimal(data["quantity_pending"]) > Decimal("0"):
-            new_states = "completed"
+            new_states = "pending"
         elif state == "cancelled" and data["cancel"]["code"] == 611:
             new_states = "cancelled"
         elif state == "cancelled" and data["cancel"]["code"] != 611:
