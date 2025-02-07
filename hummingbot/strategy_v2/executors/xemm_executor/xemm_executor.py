@@ -247,6 +247,7 @@ class XEMMExecutor(ExecutorBase):
             # Get the conversion rate to normalize prices to the same quote asset
             try:
                 conversion_rate = await self.get_quote_asset_conversion_rate()
+                self.logger().info(f"::::: getting convertion rate for  :::::::         ::::::::::::       {self.quote_conversion_pair}   :::::: {conversion_rate}")
                 if self.maker_order_side == TradeType.BUY:
                     # If maker is buying, normalize taker (sell) price to maker quote asset
                     normalized_taker_price = self._taker_result_price * conversion_rate
@@ -352,7 +353,6 @@ class XEMMExecutor(ExecutorBase):
         Example: For M3M3/USDT and M3M3/USDC, fetch the USDC/USDT rate.
         """
         try:
-            print(f"::::: getting convertion rate for  :::::::         ::::::::::::       {self.quote_conversion_pair}")
             conversion_rate = self.rate_oracle.get_pair_rate(self.quote_conversion_pair)
             if conversion_rate is None:
                 self.logger().error(f"Could not fetch conversion rate for {self.quote_conversion_pair}")
