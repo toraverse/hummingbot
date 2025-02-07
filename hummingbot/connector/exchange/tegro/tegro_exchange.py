@@ -487,7 +487,14 @@ class TegroExchange(ExchangePyBase):
             if len(all_fills_response) > 0:
                 for trade in all_fills_response:
                     timestamp = trade["timestamp"]
-                    symbol = trade["symbol"].split('_')[1]
+                    is_maker = True if trade.get("maker", "") == self.api_key else False
+                    takerSide = trade.get("taker_type")
+
+                    if is_maker:
+                        fee_asset = order.quote_asset if takerSide == "buy" else order.base_asset
+                    else:
+                        fee_asset = order.base_asset if takerSide == "buy" else order.quote_asset
+
                     fees = "0"
                     if order.trade_type == TradeType.BUY:
                         fees = trade["maker_fee"] if trade["is_buyer_maker"] else trade["taker_fee"]
@@ -496,8 +503,8 @@ class TegroExchange(ExchangePyBase):
                     fee = TradeFeeBase.new_spot_fee(
                         fee_schema = self.trade_fee_schema(),
                         trade_type = order.trade_type,
-                        percent_token = symbol,
-                        flat_fees = [TokenAmount(amount=Decimal(fees), token=symbol)]
+                        percent_token = fee_asset,
+                        flat_fees = [TokenAmount(amount=Decimal(fees), token=fee_asset)]
                     )
                     trade_update = TradeUpdate(
                         trade_id=trade["id"],

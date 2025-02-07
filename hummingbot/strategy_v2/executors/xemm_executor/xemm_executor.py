@@ -81,6 +81,7 @@ class XEMMExecutor(ExecutorBase):
         _, maker_quote = split_hb_trading_pair(self.maker_trading_pair)
         _, taker_quote = split_hb_trading_pair(self.taker_trading_pair)
         self.quote_conversion_pair = f"{taker_quote}-{maker_quote}"
+        print(f"::::: quote_conversion_pair  :::::::         ::::::::::::       {self.quote_conversion_pair}")
 
         taker_connector = strategy.connectors[self.taker_connector]
         if not self.is_amm_connector(exchange=self.taker_connector):
@@ -351,6 +352,7 @@ class XEMMExecutor(ExecutorBase):
         Example: For M3M3/USDT and M3M3/USDC, fetch the USDC/USDT rate.
         """
         try:
+            print(f"::::: getting convertion rate for  :::::::         ::::::::::::       {self.quote_conversion_pair}")
             conversion_rate = self.rate_oracle.get_pair_rate(self.quote_conversion_pair)
             if conversion_rate is None:
                 self.logger().error(f"Could not fetch conversion rate for {self.quote_conversion_pair}")
