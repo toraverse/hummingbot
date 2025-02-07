@@ -452,7 +452,7 @@ class TegroExchange(ExchangePyBase):
             self.logger().info(f"Order {order.client_order_id} has been completed on exchange and not on chain with {order_status['quantity_filled']} filled.")
         if new_states == "partial":
             self.logger().info(f"Order {order.client_order_id} has been partially filled. with {order_status['quantity_filled']} filled.")
-        self.logger.info(f"Order update through websockek{order_status}")
+        self.logger().info(f"Order update through websockek{order_status}")
         order_update = OrderUpdate(
             trading_pair=order.trading_pair,
             update_timestamp=order_status["timestamp"] * 1e-3,
@@ -565,7 +565,7 @@ class TegroExchange(ExchangePyBase):
         if new_states == "partial":
             self.logger().info(f"Order {tracked_order.client_order_id} has been partially filled. with {updated_order_data[0]['quantity_filled']} filled.")
         confirmed_state = CONSTANTS.ORDER_STATE[new_states]
-        self.logger.info(f"Order update through order status {updated_order_data}")
+        self.logger().info(f"Order update through order status {updated_order_data}")
         order_update = OrderUpdate(
             client_order_id=tracked_order.client_order_id,
             exchange_order_id=tracked_order.exchange_order_id,
