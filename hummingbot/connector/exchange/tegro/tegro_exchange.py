@@ -448,12 +448,6 @@ class TegroExchange(ExchangePyBase):
     def _create_order_update_with_order_status_data(self, order_status: Dict[str, Any], order: InFlightOrder):
         new_states = self.get_state(order_status)
         confirmed_state = CONSTANTS.ORDER_STATE[new_states]
-        if new_states == "completed":
-            self.logger().info(f"Order {order.client_order_id} has been completed both on exchange and on chain with {order_status['quantity_filled']} filled.")
-        if new_states == "pending":
-            self.logger().info(f"Order {order.client_order_id} has been completed on exchange and not on chain with {order_status['quantity_filled']} filled.")
-        if new_states == "partial":
-            self.logger().info(f"Order {order.client_order_id} has been partially filled. with {order_status['quantity_filled']} filled.")
 
         # self.logger().info(f"Order update through websockek{order_status}")
         order_update = OrderUpdate(
@@ -629,14 +623,7 @@ class TegroExchange(ExchangePyBase):
             is_auth_required=False)
         new_states = self.get_state(updated_order_data)
         confirmed_state = CONSTANTS.ORDER_STATE[new_states]
-        if new_states == "completed":
-            self.logger().info(f"Order {tracked_order.client_order_id} has been completed both on exchange and on chain with {updated_order_data[0]['quantity_filled']} filled.")
-        if new_states == "pending":
-            self.logger().info(f"Order {tracked_order.client_order_id} has been completed on exchange and not on chain with {updated_order_data[0]['quantity_filled']} filled.")
-        if new_states == "partial":
-            self.logger().info(f"Order {tracked_order.client_order_id} has been partially filled. with {updated_order_data[0]['quantity_filled']} filled.")
 
-        # self.logger().info(f"Order update through endpoint{updated_order_data}")
         order_update = OrderUpdate(
             client_order_id=tracked_order.client_order_id,
             exchange_order_id=tracked_order.exchange_order_id,
