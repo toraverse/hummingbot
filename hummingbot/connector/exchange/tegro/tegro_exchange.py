@@ -776,7 +776,7 @@ class TegroExchange(ExchangePyBase):
 
         symbol_map = await self.trading_pair_symbol_map()
         params = {"page": 1, "sort_order": "desc", "sort_by": "volume", "page_size": 20, "verified": "true"},
-        responses = await self._api_get(path_url=CONSTANTS.MARKET_LIST_PATH_URL.format(self.chain), params=params)
+        responses = await self._api_get(path_url=CONSTANTS.MARKET_LIST_PATH_URL.format(self.chain), params=params, limit_id=CONSTANTS.MARKET_LIST_PATH_URL)
         last_traded_prices = {}
         for info in responses:
             instrument_name = info["symbol"]
