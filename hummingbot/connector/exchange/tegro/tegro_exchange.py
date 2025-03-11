@@ -433,6 +433,8 @@ class TegroExchange(ExchangePyBase):
                     continue
                 elif channel == CONSTANTS.USER_METHODS["ORDER_SUBMITTED"]:
                     await self._process_order_message(results)
+                elif channel == CONSTANTS.USER_METHODS["TRADES_CREATE"]:
+                    await self._process_trade_message(results)
                 elif channel == CONSTANTS.USER_METHODS["ORDER_TRADE_PROCESSED"]:
                     await self._process_order_message(results, fetch_trades = True)
 
@@ -446,6 +448,7 @@ class TegroExchange(ExchangePyBase):
     def _create_order_update_with_order_status_data(self, order_status: Dict[str, Any], order: InFlightOrder):
         new_states = self.get_state(order_status)
         confirmed_state = CONSTANTS.ORDER_STATE[new_states]
+
         order_update = OrderUpdate(
             trading_pair=order.trading_pair,
             update_timestamp=order_status["timestamp"] * 1e-3,
@@ -454,6 +457,77 @@ class TegroExchange(ExchangePyBase):
             exchange_order_id=f"{str(order_status['order_id'])}",
         )
         return order_update
+
+    async def _process_trade_message(self, trade: Dict[str, Any], client_order_id: Optional[str] = None):
+        """
+        Updates in-flight order and trigger order filled event for trade message received. Triggers order completed
+        event if the total executed amount equals to the specified order amount.
+        Example Trade:
+        https://api.tegro.com/api/v1/trading/market/orders/trades/
+        """
+        maker_order_id = str(trade["maker_order_id"])
+        taker_order_id = str(trade["taker_order_id"])
+        all_orders = self._order_tracker.all_fillable_orders
+        try:
+            for _, v in all_orders.items():
+                await v.get_exchange_order_id()
+        except Exception as e:
+            self.logger().error(f"Error while fetching exchange order id: {e}")
+
+        tracked_orders = [o for o in all_orders.values() if maker_order_id == o.exchange_order_id]
+        _tracked_orders = [o for o in all_orders.values() if taker_order_id == o.exchange_order_id]
+
+        exchange_order_id = tracked_orders[0].exchange_order_id if tracked_orders else None
+        _exchange_order_id = _tracked_orders[0].exchange_order_id if _tracked_orders else None
+
+        tracked_order = self._order_tracker.all_fillable_orders_by_exchange_order_id.get(exchange_order_id) if exchange_order_id else None
+        _tracked_order = self._order_tracker.all_fillable_orders_by_exchange_order_id.get(_exchange_order_id) if _exchange_order_id else None
+
+        if tracked_order is None and _tracked_order is None:
+            self.logger().debug(f"Ignoring trade message with id {client_order_id}: not in in_flight_orders.")
+        else:
+            trade_update = self._create_trade_update_with_order_fill_data(
+                order_fill=trade,
+                order=tracked_order)
+            self._order_tracker.process_trade_update(trade_update)
+
+    def _create_trade_update_with_order_fill_data(
+            self,
+            order_fill: Dict[str, Any],
+            order: InFlightOrder):
+
+        is_maker = order_fill.get("maker", "") == self.api_key
+        is_buyer_maker = bool(order_fill.get("is_buyer_maker"))
+        # fee_asset = order.quote_asset
+        if is_maker:
+            fee_amount = Decimal(order_fill.get("maker_fee", 0))
+            fee_asset = order.base_asset if is_buyer_maker else order.quote_asset
+        else:
+            fee_amount = Decimal(order_fill.get("taker_fee", 0))
+            fee_asset = order.quote_asset if is_buyer_maker else order.base_asset
+
+        fee = TradeFeeBase.new_spot_fee(
+            fee_schema=self.trade_fee_schema(),
+            trade_type=order.trade_type,
+            percent_token=fee_asset.upper(),
+            flat_fees=[TokenAmount(
+                amount=Decimal(fee_amount),
+                token=fee_asset.upper()
+            )]
+        )
+
+        trade_update = TradeUpdate(
+            trade_id=str(order_fill["id"]),
+            client_order_id=order.client_order_id,
+            exchange_order_id=order.exchange_order_id,
+            trading_pair=order.trading_pair,
+            fee=fee,
+            fill_base_amount=Decimal(order_fill["amount"]),
+            fill_quote_amount=Decimal(order_fill["amount"]) * Decimal(order_fill["price"]),
+            fill_price=Decimal(order_fill["price"]),
+            fill_timestamp=order_fill["timestamp"] * 1e-3,
+        )
+        return trade_update
 
     async def _process_order_message(self, raw_msg: Dict[str, Any], fetch_trades = False):
         client_order_id = f"{raw_msg['order_id']}"
@@ -481,17 +555,20 @@ class TegroExchange(ExchangePyBase):
             if len(all_fills_response) > 0:
                 for trade in all_fills_response:
                     timestamp = trade["timestamp"]
-                    symbol = trade["symbol"].split('_')[1]
-                    fees = "0"
-                    if order.trade_type == TradeType.BUY:
-                        fees = trade["maker_fee"] if trade["is_buyer_maker"] else trade["taker_fee"]
-                    if order.trade_type == TradeType.SELL:
-                        fees = trade["taker_fee"] if trade["is_buyer_maker"] else trade["maker_fee"]
+                    is_maker = True if trade.get("maker", "") == self.api_key else False
+                    is_buyer_maker = bool(trade.get("is_buyer_maker"))
+                    # fee_asset = order.quote_asset
+                    if is_maker:
+                        fee_amount = Decimal(trade.get("maker_fee", 0))
+                        fee_asset = order.base_asset if is_buyer_maker else order.quote_asset
+                    else:
+                        fee_amount = Decimal(trade.get("taker_fee", 0))
+                        fee_asset = order.quote_asset if is_buyer_maker else order.base_asset
                     fee = TradeFeeBase.new_spot_fee(
                         fee_schema = self.trade_fee_schema(),
                         trade_type = order.trade_type,
-                        percent_token = symbol,
-                        flat_fees = [TokenAmount(amount=Decimal(fees), token=symbol)]
+                        percent_token = fee_asset,
+                        flat_fees = [TokenAmount(amount=Decimal(fee_amount), token=fee_asset)]
                     )
                     trade_update = TradeUpdate(
                         trade_id=trade["id"],
@@ -545,6 +622,7 @@ class TegroExchange(ExchangePyBase):
             is_auth_required=False)
         new_states = self.get_state(updated_order_data)
         confirmed_state = CONSTANTS.ORDER_STATE[new_states]
+
         order_update = OrderUpdate(
             client_order_id=tracked_order.client_order_id,
             exchange_order_id=tracked_order.exchange_order_id,
@@ -691,6 +769,21 @@ class TegroExchange(ExchangePyBase):
                 limit_id = CONSTANTS.TICKER_PRICE_CHANGE_PATH_URL
             )
             return Decimal(resp_json["ticker"]["price"])
+
+    async def get_last_traded_prices(self, trading_pairs: List[str] = None) -> Dict[str, float]:
+        if trading_pairs is None:
+            trading_pairs = []
+
+        symbol_map = await self.trading_pair_symbol_map()
+        params = {"page": 1, "sort_order": "desc", "sort_by": "volume", "page_size": 20, "verified": "true"},
+        responses = await self._api_get(path_url=CONSTANTS.MARKET_LIST_PATH_URL.format(self.chain), params=params, limit_id=CONSTANTS.MARKET_LIST_PATH_URL)
+        last_traded_prices = {}
+        for info in responses:
+            instrument_name = info["symbol"]
+            if instrument_name in symbol_map.keys():
+                mapped_name = await self.trading_pair_associated_to_exchange_symbol(instrument_name)
+                last_traded_prices[mapped_name] = Decimal(info["price"])
+        return last_traded_prices
 
     async def _make_network_check_request(self):
         return await self._api_request(
