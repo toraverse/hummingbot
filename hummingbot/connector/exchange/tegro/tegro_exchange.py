@@ -784,6 +784,21 @@ class TegroExchange(ExchangePyBase):
             )
             return Decimal(resp_json["ticker"]["price"])
 
+    async def get_last_traded_prices(self, trading_pairs: List[str] = None) -> Dict[str, float]:
+        if trading_pairs is None:
+            trading_pairs = []
+
+        symbol_map = await self.trading_pair_symbol_map()
+        params = {"page": 1, "sort_order": "desc", "sort_by": "volume", "page_size": 20, "verified": "true"},
+        responses = await self._api_get(path_url=CONSTANTS.MARKET_LIST_PATH_URL.format(self.chain), params=params)
+        last_traded_prices = {}
+        for info in responses:
+            instrument_name = info["symbol"]
+            if instrument_name in symbol_map.keys():
+                mapped_name = await self.trading_pair_associated_to_exchange_symbol(instrument_name)
+                last_traded_prices[mapped_name] = Decimal(info["price"])
+        return last_traded_prices
+
     async def _make_network_check_request(self):
         return await self._api_request(
             path_url = self.check_network_request_path,
