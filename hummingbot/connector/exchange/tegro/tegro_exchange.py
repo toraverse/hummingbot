@@ -449,7 +449,6 @@ class TegroExchange(ExchangePyBase):
         new_states = self.get_state(order_status)
         confirmed_state = CONSTANTS.ORDER_STATE[new_states]
 
-        # self.logger().info(f"Order update through websockek{order_status}")
         order_update = OrderUpdate(
             trading_pair=order.trading_pair,
             update_timestamp=order_status["timestamp"] * 1e-3,
@@ -470,7 +469,7 @@ class TegroExchange(ExchangePyBase):
         taker_order_id = str(trade["taker_order_id"])
         all_orders = self._order_tracker.all_fillable_orders
         try:
-            for k, v in all_orders.items():
+            for _, v in all_orders.items():
                 await v.get_exchange_order_id()
         except Exception as e:
             self.logger().error(f"Error while fetching exchange order id: {e}")
@@ -497,7 +496,7 @@ class TegroExchange(ExchangePyBase):
             order_fill: Dict[str, Any],
             order: InFlightOrder):
 
-        is_maker = True if order_fill.get("maker", "") == self.api_key else False
+        is_maker = order_fill.get("maker", "") == self.api_key
         is_buyer_maker = bool(order_fill.get("is_buyer_maker"))
         # fee_asset = order.quote_asset
         if is_maker:
@@ -602,7 +601,7 @@ class TegroExchange(ExchangePyBase):
         elif state == "open" and Decimal(data["quantity_filled"]) > Decimal("0"):
             new_states = "partial"
         elif state == "closed" and Decimal(data["quantity_pending"]) > Decimal("0"):
-            new_states = "completed"
+            new_states = "pending"
         elif state == "cancelled" and data["cancel"]["code"] == 611:
             new_states = "cancelled"
         elif state == "cancelled" and data["cancel"]["code"] != 611:
